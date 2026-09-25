@@ -1,0 +1,2329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PM Intel Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+
+  <!-- Resource hints — start DNS+TCP before render begins -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+  <link rel="preconnect" href="https://wflqkvszshblumbpcxch.supabase.co" crossorigin>
+  <link rel="preconnect" href="https://basemap.nationalmap.gov" crossorigin>
+  <link rel="dns-prefetch" href="https://services3.arcgis.com">
+  <link rel="dns-prefetch" href="https://api.weather.gov">
+  <link rel="dns-prefetch" href="https://s3.amazonaws.com">
+  <link rel="dns-prefetch" href="https://fonts.openmaptiles.org">
+
+  <!-- MapLibre GL JS — preload CSS so it doesn't block first paint -->
+  <link rel="preload" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"></noscript>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <!-- Auth must be blocking — it does window.location.replace() for session guard -->
+  <script src="auth.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #16191f;
+      --border: #2a2d35;
+      --text: #e8eaf0;
+      --muted: #8b8fa8;
+      --accent: #4aa3ff;
+      --danger: #e74c3c;
+      --warn: #f39c12;
+      --success: #2ecc71;
+      --panel-w: 272px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; overflow: hidden; }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    .map-header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      height: 48px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    }
+    .map-header .back { color: var(--accent); text-decoration: none; font-size: 13px; white-space: nowrap; }
+    .map-header .back:hover { text-decoration: underline; }
+    .map-header h1 { font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .map-header .hdr-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #load-status { font-size: 11px; color: var(--muted); }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    .map-layout { position: fixed; top: 48px; bottom: 0; left: 0; right: 0; display: flex; }
+
+    /* ── Side panel ──────────────────────────────────────────────────── */
+    .map-panel {
+      width: var(--panel-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto; flex-shrink: 0;
+      display: flex; flex-direction: column;
+    }
+    .panel-section { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .panel-section h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing:.06em; color: var(--muted); margin-bottom: 8px; }
+
+    .layer-row { display: flex; align-items: center; gap: 7px; padding: 4px 0; cursor: pointer; }
+    .layer-row input[type=checkbox] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+    .layer-row label { cursor: pointer; flex: 1; line-height: 1.3; }
+    .layer-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .layer-line { width: 14px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+    .layer-badge { font-size: 10px; background: var(--border); border-radius: 10px; padding: 1px 6px; color: var(--muted); min-width: 24px; text-align: center; white-space: nowrap; }
+
+    .map-filter-row { margin-bottom: 8px; }
+    .map-filter-row label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+    .map-filter-row select, .map-filter-row input {
+      width: 100%; padding: 5px 8px; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px; font-size: 12px;
+    }
+
+    .btn { padding: 6px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 12px; cursor: pointer; transition: background .15s; }
+    .btn:hover { background: var(--border); }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+    .btn-primary:hover { background: #3b92ee; }
+    .btn-primary:disabled { background: var(--border); color: var(--muted); border-color: var(--border); cursor: default; }
+    .btn-load { width: 100%; padding: 7px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; border: none; cursor: pointer; font-size: 13px; margin-top: 4px; }
+    .btn-load:hover { background: #3b92ee; }
+    .btn-load:disabled { background: var(--border); color: var(--muted); cursor: default; }
+
+    /* Mode pills */
+    .mode-row { display: flex; gap: 4px; margin-bottom: 8px; }
+    .mode-pill { flex: 1; text-align: center; padding: 5px 4px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); color: var(--muted); background: var(--bg); transition: all .15s; }
+    .mode-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Legend */
+    .legend-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 11px; color: var(--muted); }
+
+    /* Stats strip */
+    .stats-strip { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    .stat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .stat-chip { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 2px 8px; font-size: 11px; color: var(--muted); display: flex; gap: 4px; }
+    .stat-chip strong { color: var(--text); }
+
+    /* Map canvas */
+    #map { flex: 1; }
+
+    /* Camera modal */
+    #cam-modal {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.82); align-items: center; justify-content: center;
+    }
+    #cam-modal.open { display: flex; }
+    .cam-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; max-width: 640px; width: calc(100vw - 32px);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .cam-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .cam-card-header h2 { font-size: 14px; font-weight: 700; }
+    .cam-card-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .cam-card-close:hover { color: var(--text); }
+    .cam-img-wrap { width: 100%; aspect-ratio: 4/3; background: #0a0c10; border-radius: 6px; overflow: hidden; position: relative; }
+    .cam-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cam-img-wrap .cam-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+    .cam-meta { font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; }
+    .cam-meta strong { color: var(--text); }
+    .cam-refresh-row { display: flex; align-items: center; gap: 8px; }
+    .cam-disclaimer { font-size: 10px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; }
+    .cam-actions { display: flex; gap: 6px; }
+
+    /* Perf indicator */
+    #perf-badge { position: fixed; bottom: 8px; right: 8px; z-index: 500; background: rgba(15,17,23,.85); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 10px; color: var(--muted); pointer-events: none; }
+
+    /* MapLibre popup override */
+    .maplibregl-popup-content { background: var(--surface) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; box-shadow: 0 4px 20px rgba(0,0,0,.5) !important; font-size: 12px !important; padding: 10px 12px !important; max-width: 280px !important; }
+    .maplibregl-popup-tip { border-top-color: var(--surface) !important; }
+    .pop-tag { display: inline-block; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700; letter-spacing:.04em; margin-bottom: 4px; }
+    .pop-row { margin-top: 3px; }
+    .pop-muted { color: var(--muted); font-size: 11px; }
+    .pop-link { color: var(--accent); text-decoration: none; font-size: 11px; }
+    .pop-link:hover { text-decoration: underline; }
+    .pop-warning { font-size: 10px; color: var(--warn); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+
+    /* 3D label */
+    .badge-3d { background: var(--accent); color: #fff; font-size: 9px; font-weight: 700; border-radius: 3px; padding: 1px 4px; vertical-align: middle; margin-left: 3px; }
+
+    /* Incident category filter */
+    #inc-filter-section { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ───────────────────────────────────────────────────────── -->
+  <header class="map-header">
+    <a class="back" href="index.html">← Dashboard</a>
+    <h1>🔥 PM Intel Map</h1>
+    <div class="hdr-right">
+      <span id="load-status"></span>
+    </div>
+  </header>
+
+  <div class="map-layout">
+
+    <!-- ── Side panel ───────────────────────────────────────────────── -->
+    <aside class="map-panel">
+
+      <!-- Map mode -->
+      <div class="panel-section">
+        <h3>View Mode</h3>
+        <div class="mode-row">
+          <div class="mode-pill active" id="mode-2d" onclick="setMode('2d')">2D</div>
+          <div class="mode-pill" id="mode-25d" onclick="setMode('25d')">2.5D</div>
+          <div class="mode-pill" id="mode-3d" onclick="setMode('3d')">3D <span class="badge-3d">NEW</span></div>
+        </div>
+        <div class="map-filter-row">
+          <label>Basemap</label>
+          <select id="basemap-select">
+            <option value="dark">Dark (Esri)</option>
+            <option value="satellite">Satellite</option>
+            <option value="osm">OpenStreetMap</option>
+            <option value="topo">Topo</option>
+          </select>
+        </div>
+        <div class="map-filter-row">
+          <label>State Filter</label>
+          <select id="state-filter">
+            <option value="">— All States —</option>
+          </select>
+        </div>
+        <button class="btn-load" id="load-btn">Load / Refresh Layers</button>
+      </div>
+
+      <!-- Terrain & LiDAR panel (shown in 2.5D and 3D modes) -->
+      <div class="panel-section" id="section-3d" style="display:none;">
+        <h3>Terrain &amp; LiDAR <span class="badge-3d" style="background:#4caf84;">USGS 3DEP</span></h3>
+
+        <!-- Terrain layers -->
+        <div class="layer-row">
+          <input type="checkbox" id="opt-hillshade" checked>
+          <label for="opt-hillshade">Hillshade (USGS)</label>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="opt-elev-color">
+          <label for="opt-elev-color">Elevation Color Ramp</label>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="opt-slope">
+          <label for="opt-slope">Slope Overlay</label>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="opt-contours">
+          <label for="opt-contours">Contours (zoom &ge;12)</label>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="opt-buildings" checked>
+          <label for="opt-buildings">3D Buildings (OSM)</label>
+        </div>
+        <div class="layer-row" id="row-terrain3d">
+          <input type="checkbox" id="opt-terrain" checked>
+          <label for="opt-terrain">3D Terrain Extrusion</label>
+        </div>
+        <div id="row-google3d" style="margin-top:8px;padding:7px 8px;background:rgba(74,163,255,0.07);border-radius:5px;border:1px solid rgba(74,163,255,0.25);">
+          <div style="font-size:10px;font-weight:700;color:#4aa3ff;margin-bottom:4px;">Google Photorealistic 3D ✦</div>
+          <div style="font-size:9px;color:var(--muted);margin-bottom:6px;">Replaces OSM buildings with Google's photorealistic mesh. Zoom 14+ for full detail.</div>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <input type="checkbox" id="opt-google3d" style="flex-shrink:0;">
+            <label for="opt-google3d" style="font-size:10px;color:var(--text);">Enable Photorealistic 3D</label>
+          </div>
+          <div id="google3d-status" style="font-size:9px;color:var(--muted);margin-top:4px;"></div>
+        </div>
+        <div class="map-filter-row" id="row-exag" style="margin-top:4px;">
+          <label>Exaggeration: <span id="exag-val">1.5&times;</span></label>
+          <input type="range" id="terrain-exag" min="1" max="5" step="0.5" value="1.5" style="width:100%;margin-top:4px;">
+        </div>
+
+        <!-- City jump nav -->
+        <div style="margin-top:10px;padding:8px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid var(--border);">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Jump to city (3D terrain view):</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+            <button class="3d-city-btn" onclick="flyToCity('chicago')"   style="font-size:10px;padding:4px 6px;background:var(--border);border:none;border-radius:4px;color:var(--text);cursor:pointer;text-align:left;">Chicago, IL</button>
+            <button class="3d-city-btn" onclick="flyToCity('nyc')"       style="font-size:10px;padding:4px 6px;background:var(--border);border:none;border-radius:4px;color:var(--text);cursor:pointer;text-align:left;">New York, NY</button>
+            <button class="3d-city-btn" onclick="flyToCity('la')"        style="font-size:10px;padding:4px 6px;background:var(--border);border:none;border-radius:4px;color:var(--text);cursor:pointer;text-align:left;">Los Angeles</button>
+            <button class="3d-city-btn" onclick="flyToCity('houston')"   style="font-size:10px;padding:4px 6px;background:var(--border);border:none;border-radius:4px;color:var(--text);cursor:pointer;text-align:left;">Houston, TX</button>
+            <button class="3d-city-btn" onclick="flyToCity('denver')"    style="font-size:10px;padding:4px 6px;background:var(--border);border:none;border-radius:4px;color:var(--text);cursor:pointer;text-align:left;">Denver, CO</button>
+            <button class="3d-city-btn" onclick="flyToCity('milwaukee')" style="font-size:10px;padding:4px 6px;background:var(--border);border:none;border-radius:4px;color:var(--text);cursor:pointer;text-align:left;">Milwaukee, WI</button>
+          </div>
+        </div>
+
+        <!-- LiDAR AOI section -->
+        <div style="margin-top:10px;padding:8px;background:rgba(76,175,132,0.07);border-radius:6px;border:1px solid rgba(76,175,132,0.3);">
+          <div style="font-size:11px;font-weight:700;color:#4caf84;margin-bottom:6px;">&#11042; LiDAR Coverage Discovery</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+            Draw an area of interest to check USGS 3DEP LiDAR availability and vintage.
+          </div>
+          <button id="btn-draw-aoi" onclick="startAoiDraw()" style="width:100%;padding:6px;background:rgba(76,175,132,0.2);border:1px solid #4caf84;border-radius:4px;color:#4caf84;font-size:11px;font-weight:600;cursor:pointer;">
+            &#9998; Draw AOI on Map
+          </button>
+          <button id="btn-cancel-aoi" onclick="cancelAoiDraw()" style="display:none;width:100%;padding:6px;background:rgba(231,76,60,0.15);border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;font-size:11px;font-weight:600;cursor:pointer;margin-top:4px;">
+            &#10005; Cancel Draw
+          </button>
+          <div id="lidar-aoi-status" style="margin-top:8px;font-size:10px;color:var(--muted);"></div>
+          <div id="lidar-candidates" style="margin-top:8px;"></div>
+          <div id="lidar-job-panel" style="display:none;margin-top:8px;"></div>
+        </div>
+
+        <!-- Provenance footer -->
+        <div style="margin-top:8px;font-size:9px;color:var(--muted);line-height:1.5;opacity:.7;">
+          Terrain: USGS National Map &middot; AWS Elevation Tiles &middot; Public domain.<br>
+          Static context &mdash; verify current conditions through field reports.
+        </div>
+      </div>
+
+      <!-- ── NERIS Fire Department Layers ── -->
+      <div class="panel-section">
+        <h3>🚒 Fire Departments</h3>
+
+        <!-- Dept search/filter -->
+        <div style="margin-bottom:8px;">
+          <input type="text" id="dept-search" placeholder="Search dept name…"
+            style="width:100%;box-sizing:border-box;padding:5px 8px;font-size:11px;
+                   background:var(--surface-2,#23272e);border:1px solid var(--border,#2d3138);
+                   border-radius:4px;color:var(--text,#f3f4f6);outline:none;">
+        </div>
+        <div class="map-filter-row" style="margin-bottom:6px;">
+          <label>Dept Type</label>
+          <select id="dept-type-filter" style="font-size:11px;">
+            <option value="">All Types</option>
+            <option value="Career">Career</option>
+            <option value="Combination">Combination</option>
+            <option value="Volunteer">Volunteer</option>
+            <option value="Airport">Airport</option>
+            <option value="Industrial">Industrial</option>
+          </select>
+        </div>
+
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-neris-depts" checked>
+          <span class="layer-dot" style="background:#f1c40f;border:1px solid #333;"></span>
+          <label for="lyr-neris-depts">Dept HQ Pins</label>
+          <span class="layer-badge" id="badge-depts">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-neris-stations">
+          <span class="layer-dot" style="background:#2ecc71;"></span>
+          <label for="lyr-neris-stations">Station Pins</label>
+          <span class="layer-badge" id="badge-stations">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-neris-jurisd">
+          <span class="layer-line" style="background:#e67e22;"></span>
+          <label for="lyr-neris-jurisd">Jurisdiction Boundaries</label>
+          <span class="layer-badge" id="badge-jurisd">—</span>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:4px;">Click any pin for department details. Clusters zoom on click.</p>
+      </div>
+
+      <!-- ── Wildfire & Weather ── -->
+      <div class="panel-section">
+        <h3>🔥 Wildfire &amp; Weather</h3>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-nifc" checked>
+          <span class="layer-dot" style="background:#e74c3c;"></span>
+          <label for="lyr-nifc">Active Perimeters (NIFC)</label>
+          <span class="layer-badge" id="badge-nifc">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-firms">
+          <span class="layer-dot" style="background:#ff6600;border:1px solid #ff3300;"></span>
+          <label for="lyr-firms">FIRMS Hotspots (NASA · 24h)</label>
+          <span class="layer-badge" id="badge-firms">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-mtbs">
+          <span class="layer-dot" style="background:#8B4513;border:1px dashed #d2691e;"></span>
+          <label for="lyr-mtbs">Burn History · MTBS (1984–2023)</label>
+          <span class="layer-badge" id="badge-mtbs">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-landfire">
+          <span class="layer-dot" style="background:#228B22;border:1px solid #90EE90;"></span>
+          <label for="lyr-landfire">Fuel Model (LANDFIRE)</label>
+          <span class="layer-badge" id="badge-landfire">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-noaa" checked>
+          <span class="layer-dot" style="background:#f39c12;border:1px dashed #fff;"></span>
+          <label for="lyr-noaa">Fire Weather Alerts (NOAA)</label>
+          <span class="layer-badge" id="badge-noaa">—</span>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-fema-wildfire" checked>
+          <span class="layer-dot" style="background:#e74c3c;opacity:.7;"></span>
+          <label for="lyr-fema-wildfire">FEMA Wildfire Risk (NRI)</label>
+        </div>
+      </div>
+
+      <!-- ── Incidents & Hazards ── -->
+      <div class="panel-section">
+        <h3>⚠️ Incidents &amp; Hazards</h3>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-neris-inc">
+          <span class="layer-dot" style="background:#3498db;"></span>
+          <label for="lyr-neris-inc">NERIS Incidents (19M total)</label>
+          <span class="layer-badge" id="badge-inc">—</span>
+        </div>
+        <div id="inc-filter-section" style="padding-left:18px;margin-top:4px;">
+          <div class="map-filter-row">
+            <label>Incident Type</label>
+            <select id="inc-type-filter" style="font-size:11px;">
+              <option value="">All Types</option>
+              <option value="FIRE">Fire</option>
+              <option value="MEDICAL">Medical</option>
+              <option value="HAZSIT">HazMat / HazSit</option>
+              <option value="RESCUE">Rescue</option>
+              <option value="PUBSERV">Public Service</option>
+            </select>
+          </div>
+        </div>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-epa-tri">
+          <span class="layer-dot" style="background:#9b59b6;"></span>
+          <label for="lyr-epa-tri">EPA Toxic Release Sites</label>
+          <span class="layer-badge" id="badge-tri">—</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>🎥 Live Fire Cameras <span class="badge-3d" style="background:#e74c3c;">LIVE</span></h3>
+        <div class="layer-row">
+          <input type="checkbox" id="lyr-cameras" checked>
+          <span class="layer-dot" style="background:#e74c3c;border:2px solid #fff;"></span>
+          <label for="lyr-cameras">ALERTWildfire Cameras</label>
+          <span class="layer-badge" id="badge-cameras">—</span>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;">
+          Click any 📷 pin to view the live camera image. Images refresh every ~2 min.<br>
+          Source: ALERTWildfire / AlertCalifornia (UCSD). Public domain.
+        </p>
+      </div>
+
+      <!-- Legend -->
+      <div class="panel-section">
+        <h3>Legend</h3>
+        <div class="legend-item"><span class="layer-dot" style="background:#e74c3c;"></span> Wildfire Perimeter</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#f39c12;border:1px dashed #ccc;"></span> Fire Weather Alert</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#f1c40f;border:1px solid #333;"></span> Fire Dept HQ</div>
+        <div class="legend-item"><span class="layer-line" style="background:#e67e22;border:1px dashed #e67e22;"></span> Jurisdiction Boundary</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#3498db;"></span> NERIS Incident</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#e74c3c;opacity:.7;"></span> FEMA Wildfire Risk</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#2ecc71;"></span> Fire Station</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#9b59b6;"></span> EPA TRI Facility</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#ff4444;border:2px solid #fff;"></span> 📷 Fire Camera</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#ff6600;border:1px solid #ff3300;"></span> FIRMS Hotspot</div>
+        <div class="legend-item"><span class="layer-dot" style="background:#8B4513;opacity:.8;"></span> MTBS Burn History</div>
+        <div class="legend-item"><span class="layer-line" style="background:linear-gradient(90deg,#228B22,#ff6600,#e74c3c);height:6px;border-radius:2px;"></span> LANDFIRE Fuel Model</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-strip" id="stats-strip" style="display:none;">
+        <h3 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Current View</h3>
+        <div class="stat-chips">
+          <div class="stat-chip">🔥 <strong id="stat-fires">—</strong> fires</div>
+          <div class="stat-chip">⚠️ <strong id="stat-alerts">—</strong> alerts</div>
+          <div class="stat-chip">🏢 <strong id="stat-depts">—</strong> depts</div>
+          <div class="stat-chip">📋 <strong id="stat-inc">—</strong> incidents</div>
+        </div>
+      </div>
+
+      <!-- Attribution -->
+      <div class="panel-section" style="font-size:10px;color:var(--muted);line-height:1.6;margin-top:auto;">
+        NERIS Public · FEMA NRI · NIFC WFIGS · NOAA NWS · EPA TRI · ALERTWildfire / UCSD
+      </div>
+    </aside>
+
+    <!-- ── Map ────────────────────────────────────────────────────────── -->
+    <div id="map"></div>
+
+  </div>
+
+  <!-- ── Camera Modal ───────────────────────────────────────────────── -->
+  <div id="cam-modal" role="dialog" aria-modal="true" aria-labelledby="cam-title">
+    <div class="cam-card">
+      <div class="cam-card-header">
+        <div>
+          <div class="pop-tag" style="background:#e74c3c22;color:#e74c3c;margin-bottom:4px;">📷 LIVE FIRE CAMERA</div>
+          <h2 id="cam-title">Camera Name</h2>
+          <div class="cam-meta" id="cam-meta"></div>
+        </div>
+        <button class="cam-card-close" id="cam-close" aria-label="Close">✕</button>
+      </div>
+      <div class="cam-img-wrap">
+        <div class="cam-loading" id="cam-loading">Loading image…</div>
+        <img id="cam-img" src="" alt="Live fire camera feed" style="display:none;"
+          onload="document.getElementById('cam-loading').style.display='none';this.style.display='block';"
+          onerror="document.getElementById('cam-loading').textContent='Image unavailable — camera may be offline or rotating.';">
+      </div>
+      <div class="cam-refresh-row">
+        <button class="btn" id="cam-refresh-btn" onclick="refreshCamImage()">↻ Refresh</button>
+        <span id="cam-refresh-ts" style="font-size:11px;color:var(--muted);"></span>
+        <span style="flex:1;"></span>
+        <a id="cam-ext-link" href="#" target="_blank" rel="noopener" class="btn">Open in ALERTWildfire ↗</a>
+      </div>
+      <div class="cam-disclaimer">
+        Public reference data only. Images are captured from fixed cameras and may be delayed. Not a substitute for dispatch, incident command, or official fire agency communications.
+        Source: ALERTWildfire / ALERTCalifornia (UC San Diego) — publicly available.
+      </div>
+    </div>
+  </div>
+
+  <div id="perf-badge">—</div>
+
+  <script>
+  /* =====================================================================
+   * PM Intel Map — MapLibre GL JS
+   * Migrated from Leaflet to MapLibre for WebGL 3D, performance, clustering
+   * ===================================================================== */
+
+  // ── API endpoints ──────────────────────────────────────────────────────
+  const NIFC_URL      = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0/query";
+  const NOAA_URL      = "https://api.weather.gov/alerts";
+  const NERIS_DEPT    = "https://services5.arcgis.com/lPbcyJOcoLyZmvo6/arcgis/rest/services/NERIS%20Public%20Fire%20Departments/FeatureServer";
+
+  // ── Supabase Edge Function (viewport-aware NERIS cache) ───────────────
+  const SUPABASE_URL      = "https://wflqkvszshblumbpcxch.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmbHFrdnN6c2hibHVtYnBjeGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMTcwMjMsImV4cCI6MjA4Mzc5MzAyM30.0jziSBoP7i_AgsA2-cUJYGaaMQ9eaMJHZW1NCCntDxE";
+  const NERIS_EDGE_FN     = `${SUPABASE_URL}/functions/v1/neris-map-features`;
+  // Feature flag: use Supabase cache when populated, fall back to static JSON
+  let _supabaseNerisReady = null; // null=unknown, true=populated, false=empty
+  const FEMA_NRI_SVC  = "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/National_Risk_Index_Counties/FeatureServer/0";
+  const EPA_TRI       = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/Toxics_Release_Inventory/FeatureServer/0/query";
+
+  // ALERTWildfire / AlertWest public camera API
+  // Base: https://api.alertwest.org  (CORS-open public endpoint)
+  // Fallback curated list of known public cameras
+  const ALERTWEST_API = "https://api.alertwest.org/api/firecams/v0/cameras";
+  const ALERTWEST_IMG = "https://img.cdn.prod.alertwest.com";
+
+  // NERIS local files
+  const NERIS_HISTORY_URL = "neris_incident_history.json";
+
+  // ── State bboxes ───────────────────────────────────────────────────────
+  const STATE_BBOXES = {
+    AL:[-88.47,30.22,-84.89,35.01],AK:[-179.15,51.21,-129.97,71.35],AZ:[-114.82,31.33,-109.04,37.00],
+    AR:[-94.62,33.00,-89.64,36.50],CA:[-124.41,32.53,-114.13,42.01],CO:[-109.05,36.99,-102.04,41.00],
+    CT:[-73.73,40.99,-71.79,42.05],DE:[-75.79,38.45,-75.05,39.84],FL:[-87.63,24.52,-80.03,31.00],
+    GA:[-85.61,30.36,-80.84,35.00],HI:[-160.25,18.91,-154.81,22.23],ID:[-117.24,41.99,-111.04,49.00],
+    IL:[-91.51,36.97,-87.02,42.51],IN:[-88.10,37.77,-84.78,41.76],IA:[-96.64,40.38,-90.14,43.50],
+    KS:[-102.05,36.99,-94.59,40.00],KY:[-89.57,36.50,-81.96,39.15],LA:[-94.04,28.93,-88.82,33.02],
+    ME:[-71.09,43.06,-66.95,47.46],MD:[-79.49,37.91,-75.05,39.72],MA:[-73.50,41.24,-69.93,42.89],
+    MI:[-90.42,41.70,-82.42,48.19],MN:[-97.24,43.50,-89.49,49.38],MS:[-91.66,30.17,-88.10,35.00],
+    MO:[-95.77,35.99,-89.10,40.61],MT:[-116.05,44.36,-104.04,49.00],NE:[-104.05,40.00,-95.31,43.00],
+    NV:[-120.00,35.00,-114.04,42.00],NH:[-72.56,42.70,-70.70,45.31],NJ:[-75.56,38.93,-73.89,41.36],
+    NM:[-109.05,31.33,-103.00,37.00],NY:[-79.76,40.50,-71.86,45.01],NC:[-84.32,33.84,-75.46,36.59],
+    ND:[-104.05,45.94,-96.55,49.00],OH:[-84.82,38.40,-80.52,42.33],OK:[-103.00,33.62,-94.43,37.00],
+    OR:[-124.57,41.99,-116.46,46.26],PA:[-80.52,39.72,-74.69,42.27],RI:[-71.91,41.15,-71.12,42.02],
+    SC:[-83.36,32.04,-78.54,35.22],SD:[-104.06,42.48,-96.44,45.95],TN:[-90.31,34.98,-81.65,36.68],
+    TX:[-106.65,25.84,-93.51,36.50],UT:[-114.05,37.00,-109.04,42.00],VT:[-73.44,42.73,-71.50,45.02],
+    VA:[-83.68,36.54,-75.24,39.47],WA:[-124.73,45.54,-116.92,49.00],WV:[-82.64,37.20,-77.72,40.64],
+    WI:[-92.89,42.49,-86.80,47.08],WY:[-111.06,41.00,-104.05,45.01],
+  };
+
+  // ── Basemap tile URLs ──────────────────────────────────────────────────
+  const BASEMAP_STYLES = {
+    dark: {
+      version: 8,
+      sources: {
+        esri_dark: { type:"raster", tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:19, attribution:"© Esri" },
+      },
+      layers: [{ id:"bg", type:"raster", source:"esri_dark" }],
+      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+    },
+    satellite: {
+      version: 8,
+      sources: {
+        esri_sat: { type:"raster", tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:19, attribution:"© Esri" },
+      },
+      layers: [{ id:"bg", type:"raster", source:"esri_sat" }],
+      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+    },
+    osm: {
+      version: 8,
+      sources: {
+        osm: { type:"raster", tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize:256, maxzoom:19, attribution:"© OpenStreetMap contributors" },
+      },
+      layers: [{ id:"bg", type:"raster", source:"osm" }],
+      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+    },
+    topo: {
+      version: 8,
+      sources: {
+        topo: { type:"raster", tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"], tileSize:256, maxzoom:19, attribution:"© Esri" },
+      },
+      layers: [{ id:"bg", type:"raster", source:"topo" }],
+      glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+    },
+  };
+
+  // Terrarium-format DEM via AWS Open Data — fast, reliable, no key required
+  // Fallback to maplibre demo tiles only if primary fails
+  const TERRAIN_SOURCE = {
+    type: "raster-dem",
+    tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+    tileSize: 256,
+    maxzoom: 15,
+    encoding: "terrarium",
+    attribution: "Terrain: AWS Terrain Tiles",
+  };
+
+  // OpenFreeMap Protomaps vector tiles — has buildings layer with height + min_height fields
+  // Free, no API key needed, OpenMapTiles-schema compatible
+  const VECTOR_TILES_URL = "https://tiles.openfreemap.org/planet/{z}/{x}/{y}.pbf";
+
+  // Google Maps API key — injected at build time via __GOOGLE_MAPS_KEY__ placeholder
+  const GOOGLE_MAPS_KEY = "__GOOGLE_MAPS_KEY__";
+
+  // ── Map init ───────────────────────────────────────────────────────────
+  let currentMode = "2d";
+  let currentBasemap = "dark";
+  let _perfStart = performance.now();
+
+  const map = new maplibregl.Map({
+    container: "map",
+    style: BASEMAP_STYLES.dark,
+    center: [-98.35, 39.5],
+    zoom: 4,
+    maxZoom: 19,
+    attributionControl: false,
+    // Performance: larger tile cache, no extra pixels on devicePixelRatio=2 screens
+    maxTileCacheSize: 200,
+    pixelRatio: Math.min(window.devicePixelRatio, 2),
+    // pitchWithRotate:false was blocking ALL programmatic pitch changes and
+    // breaking scroll-zoom after easeTo() — removed so 3D mode works correctly
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+  map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: "imperial" }), "bottom-right");
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
+  // Performance badge
+  map.on("idle", () => {
+    const fps = map.painter?.currentLayer !== undefined ? 60 : "—";
+    document.getElementById("perf-badge").textContent = `Zoom ${map.getZoom().toFixed(1)} · WebGL`;
+  });
+
+  // Time-to-first-render
+  map.once("load", () => {
+    const ttl = Math.round(performance.now() - _perfStart);
+    setStatus(`Map loaded in ${ttl}ms`);
+    setTimeout(() => setStatus(""), 3000);
+    // Auto-load layers
+    loadAllLayers();
+    // Populate NERIS incident total badge immediately from cached intel JSON
+    _populateNerisTotalCount();
+  });
+
+  // ── Terrain & LiDAR (Milestones 1–4) ──────────────────────────────────
+  // M1: USGS 3DEP hillshade, elevation color, slope, contours + AWS terrain
+  // M2: USGS TNM coverage discovery via /lidar-api Edge Function
+  // M3: Supabase-backed AOI/job persistence
+  // M4: Job status polling + future Potree point-cloud scene link
+
+  // SUPABASE_URL and SUPABASE_ANON_KEY already declared above
+  const LIDAR_API = `${SUPABASE_URL}/functions/v1/lidar-api`;
+  const SUPABASE_ANON = SUPABASE_ANON_KEY;
+
+  // Tile source definitions — all confirmed 200 OK
+  const TERRAIN_SOURCES = {
+    hillshade: {
+      type: "raster",
+      tiles: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/tile/{z}/{y}/{x}"],
+      tileSize: 256, maxzoom: 16,
+      attribution: "USGS National Map — Shaded Relief",
+    },
+    elevColor: {
+      // USGS 3DEP dynamic image export — elevation color ramp
+      type: "raster",
+      tiles: ["https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&size=256,256&imageSR=3857&format=png&renderingRule=%7B%22rasterFunction%22%3A%22Elevation+Tinted+Hillshade%22%7D&f=image"],
+      tileSize: 256, maxzoom: 14,
+      attribution: "USGS 3DEP Elevation",
+    },
+    dem: {
+      type: "raster-dem",
+      tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+      tileSize: 256, maxzoom: 15, encoding: "terrarium",
+    },
+  };
+
+  // City coordinates for 3D fly-to
+  const CITY_COORDS = {
+    chicago:   { center: [-87.6298, 41.8781],  zoom: 14.5, pitch: 62, bearing: -25 },
+    nyc:       { center: [-74.0060, 40.7128],  zoom: 14.5, pitch: 62, bearing: -20 },
+    la:        { center: [-118.2437, 34.0522], zoom: 14.5, pitch: 62, bearing: -25 },
+    houston:   { center: [-95.3698, 29.7604],  zoom: 14.5, pitch: 62, bearing: -15 },
+    denver:    { center: [-104.9903, 39.7392], zoom: 13,   pitch: 65, bearing: -30 },
+    milwaukee: { center: [-87.9065, 43.0389],  zoom: 14.5, pitch: 62, bearing: -20 },
+  };
+
+  let _terrainOn = false;
+  let _aoiDrawing = false;
+  let _aoiCoords  = null;
+  let _aoiGeoHash = null;
+  let _jobPollInterval = null;
+
+  // ── setMode ──────────────────────────────────────────────────────────────
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll(".mode-pill").forEach(p => p.classList.remove("active"));
+    document.getElementById("mode-" + mode).classList.add("active");
+
+    const show3d = mode === "3d" || mode === "25d";
+    document.getElementById("section-3d").style.display = show3d ? "" : "none";
+    document.getElementById("row-terrain3d").style.display = mode === "3d" ? "" : "none";
+    document.getElementById("row-exag").style.display = mode === "3d" ? "" : "none";
+
+    if (mode === "2d") {
+      map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
+      removeTerrain3D();
+      removeBuildings();
+      disableGoogle3D();
+    } else if (mode === "25d") {
+      map.easeTo({ pitch: 40, bearing: -10, duration: 700 });
+      removeTerrain3D();
+      removeBuildings();
+      ensureHillshade();
+    } else if (mode === "3d") {
+      map.easeTo({ pitch: 55, bearing: -20, duration: 700 });
+      ensureHillshade();
+      // Terrain + buildings added after movement settles to avoid GL conflicts
+      map.once("moveend", () => {
+        if (currentMode === "3d") {
+          if (document.getElementById("opt-terrain")?.checked) applyTerrain3D();
+          if (document.getElementById("opt-buildings")?.checked) ensureBuildings();
+        }
+      });
+    }
+  }
+
+  // ── Terrain layer helpers ─────────────────────────────────────────────
+  function ensureHillshade() {
+    if (!document.getElementById("opt-hillshade")?.checked) return;
+    if (map.getSource("hs-src")) return;
+    map.addSource("hs-src", TERRAIN_SOURCES.hillshade);
+    map.addLayer({ id: "hs-layer", type: "raster", source: "hs-src",
+      paint: { "raster-opacity": 0.55 } }, getFirstSymbolLayer());
+  }
+
+  function removeHillshade() {
+    try { if (map.getLayer("hs-layer")) map.removeLayer("hs-layer"); } catch(_) {}
+    try { if (map.getSource("hs-src")) map.removeSource("hs-src"); } catch(_) {}
+  }
+
+  function ensureElevColor() {
+    if (map.getSource("ec-src")) return;
+    map.addSource("ec-src", TERRAIN_SOURCES.elevColor);
+    map.addLayer({ id: "ec-layer", type: "raster", source: "ec-src",
+      paint: { "raster-opacity": 0.7 } }, getFirstSymbolLayer());
+  }
+
+  function removeElevColor() {
+    try { if (map.getLayer("ec-layer")) map.removeLayer("ec-layer"); } catch(_) {}
+    try { if (map.getSource("ec-src")) map.removeSource("ec-src"); } catch(_) {}
+  }
+
+  function ensureSlopeLayer() {
+    // Slope as a hillshade layer with specific rendering rule
+    if (map.getSource("sl-src")) return;
+    map.addSource("sl-src", {
+      type: "raster",
+      tiles: ["https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&size=256,256&imageSR=3857&format=png&renderingRule=%7B%22rasterFunction%22%3A%22Slope+Map%22%7D&f=image"],
+      tileSize: 256, maxzoom: 14,
+      attribution: "USGS 3DEP — Slope",
+    });
+    map.addLayer({ id: "sl-layer", type: "raster", source: "sl-src",
+      paint: { "raster-opacity": 0.65 } }, getFirstSymbolLayer());
+  }
+
+  function removeSlopeLayer() {
+    try { if (map.getLayer("sl-layer")) map.removeLayer("sl-layer"); } catch(_) {}
+    try { if (map.getSource("sl-src")) map.removeSource("sl-src"); } catch(_) {}
+  }
+
+  function ensureContours() {
+    // Contours via 3DEP ImageServer WMS export (confirmed 200 OK).
+    // carto.nationalmap.gov/contours has no tile cache — use ImageServer instead.
+    if (map.getSource("ct-src")) return;
+    const contourRule = encodeURIComponent(JSON.stringify({ rasterFunction: "Contour" }));
+    map.addSource("ct-src", {
+      type: "raster",
+      tiles: [`https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&size=256,256&imageSR=3857&format=png&renderingRule=${contourRule}&f=image`],
+      tileSize: 256, maxzoom: 15, minzoom: 12,
+      attribution: "USGS 3DEP — Contours",
+    });
+    map.addLayer({ id: "ct-layer", type: "raster", source: "ct-src",
+      minzoom: 12,
+      paint: { "raster-opacity": 0.75 } });
+  }
+
+  function removeContours() {
+    try { if (map.getLayer("ct-layer")) map.removeLayer("ct-layer"); } catch(_) {}
+    try { if (map.getSource("ct-src")) map.removeSource("ct-src"); } catch(_) {}
+  }
+
+  function applyTerrain3D() {
+    if (_terrainOn) return;
+    _terrainOn = true;
+    if (!map.getSource("dem-src")) {
+      map.addSource("dem-src", TERRAIN_SOURCES.dem);
+    }
+    if (!map.getLayer("sky-layer")) {
+      map.addLayer({ id: "sky-layer", type: "sky",
+        paint: { "sky-type": "atmosphere", "sky-atmosphere-sun": [0.0, 90.0], "sky-atmosphere-sun-intensity": 15 } });
+    }
+    const exag = parseFloat(document.getElementById("terrain-exag")?.value) || 1.5;
+    try { map.setTerrain({ source: "dem-src", exaggeration: exag }); } catch(_) {}
+  }
+
+  function removeTerrain3D() {
+    _terrainOn = false;
+    try { map.setTerrain(null); } catch(_) {}
+    try { if (map.getLayer("sky-layer")) map.removeLayer("sky-layer"); } catch(_) {}
+    try { if (map.getSource("dem-src")) map.removeSource("dem-src"); } catch(_) {}
+  }
+
+  // ── OSM 3D Buildings (fill-extrusion via OpenFreeMap vector tiles) ────────────
+  let _buildingsOn = false;
+
+  function ensureBuildings() {
+    if (_buildingsOn) return;
+    _buildingsOn = true;
+    try {
+      if (!map.getSource("ofm-bld-src")) {
+        map.addSource("ofm-bld-src", {
+          type: "vector",
+          url: "https://tiles.openfreemap.org/planet",
+          attribution: "Buildings: OpenFreeMap © OpenMapTiles / OpenStreetMap",
+        });
+      }
+      // Building fill (base color)
+      if (!map.getLayer("bld-fill")) {
+        map.addLayer({
+          id: "bld-fill",
+          type: "fill-extrusion",
+          source: "ofm-bld-src",
+          "source-layer": "building",
+          minzoom: 13,
+          filter: ["!=", ["get", "hide_3d"], true],
+          paint: {
+            "fill-extrusion-color": [
+              "case",
+              ["has", "colour"], ["get", "colour"],
+              ["interpolate", ["linear"], ["zoom"],
+                13, "#2d3748",
+                15, "#4a5568",
+                17, "#63738a"]
+            ],
+            "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
+            "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+            "fill-extrusion-opacity": 0.82,
+          },
+        });
+      }
+      // Rooftop accent
+      if (!map.getLayer("bld-roof")) {
+        map.addLayer({
+          id: "bld-roof",
+          type: "fill-extrusion",
+          source: "ofm-bld-src",
+          "source-layer": "building",
+          minzoom: 14,
+          filter: ["!=", ["get", "hide_3d"], true],
+          paint: {
+            "fill-extrusion-color": "#7ec8e3",
+            "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
+            "fill-extrusion-base": ["-", ["coalesce", ["get", "render_height"], 6], 0.8],
+            "fill-extrusion-opacity": 0.5,
+          },
+        });
+      }
+    } catch(e) {
+      console.warn("3D buildings error:", e);
+    }
+  }
+
+  function removeBuildings() {
+    _buildingsOn = false;
+    ["bld-roof", "bld-fill"].forEach(id => {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch(_) {}
+    });
+    try { if (map.getSource("ofm-bld-src")) map.removeSource("ofm-bld-src"); } catch(_) {}
+  }
+
+  // ── Google Photorealistic 3D Tiles (Three.js custom layer) ───────────────
+  let _google3dLayer = null;
+  // Check if Google key was properly injected at build time
+  function _googleKeyOk() { return GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY.length > 10 && !GOOGLE_MAPS_KEY.includes("__GOOGLE"); }
+
+  async function enableGoogle3D(apiKey) {
+    const statusEl = document.getElementById("google3d-status");
+    if (!_googleKeyOk()) {
+      if (statusEl) statusEl.textContent = "⚠ API key not injected. Check Vercel GOOGLE_MAPS_KEY env var.";
+      const cb = document.getElementById("opt-google3d"); if (cb) cb.checked = false;
+      return;
+    }
+    if (statusEl) statusEl.textContent = "Loading 3D renderer...";
+
+    let THREE, TilesRenderer, GLTFLoader, DRACOLoader, KTX2Loader;
+    try {
+      THREE       = await import("https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js");
+      const tdr   = await import("https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.4.21/build/index.three.js");
+      TilesRenderer = tdr.TilesRenderer;
+      const gltfM = await import("https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/loaders/GLTFLoader.js");
+      GLTFLoader  = gltfM.GLTFLoader;
+      const dracoM = await import("https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/loaders/DRACOLoader.js").catch(() => null);
+      DRACOLoader = dracoM?.DRACOLoader;
+      const ktx2M = await import("https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/loaders/KTX2Loader.js").catch(() => null);
+      KTX2Loader  = ktx2M?.KTX2Loader;
+    } catch(e) {
+      if (statusEl) statusEl.textContent = "Failed to load renderer: " + e.message;
+      throw e;
+    }
+
+    const TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/root.json?key=" + apiKey;
+
+    let scene, camera, renderer, tiles;
+
+    // Convert ECEF (Earth-Centered Earth-Fixed) XYZ to lng/lat/alt
+    function ecefToLngLatAlt(x, y, z) {
+      const a = 6378137.0, e2 = 6.69437999014e-3;
+      const b = a * Math.sqrt(1 - e2);
+      const ep2 = (a*a - b*b)/(b*b);
+      const p = Math.sqrt(x*x + y*y);
+      const th = Math.atan2(a*z, b*p);
+      const lon = Math.atan2(y, x);
+      const lat = Math.atan2(z + ep2*b*Math.pow(Math.sin(th),3), p - e2*a*Math.pow(Math.cos(th),3));
+      const n = a / Math.sqrt(1 - e2*Math.sin(lat)*Math.sin(lat));
+      return { lng:(lon*180)/Math.PI, lat:(lat*180)/Math.PI, alt: p/Math.cos(lat)-n };
+    }
+
+    const customLayer = {
+      id: "google-3d-tiles",
+      type: "custom",
+      renderingMode: "3d",
+
+      onAdd(m, gl) {
+        scene    = new THREE.Scene();
+        camera   = new THREE.Camera();
+        renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+        renderer.autoClear = false;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        const gltfLoader = new GLTFLoader();
+
+        if (DRACOLoader) {
+          const draco = new DRACOLoader();
+          draco.setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/libs/draco/");
+          gltfLoader.setDRACOLoader(draco);
+        }
+        if (KTX2Loader) {
+          const ktx2 = new KTX2Loader();
+          ktx2.setTranscoderPath("https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/libs/basis/");
+          ktx2.detectSupport(renderer);
+          gltfLoader.setKTX2Loader(ktx2);
+        }
+
+        tiles = new TilesRenderer(TILESET_URL);
+        tiles.group.name = "google-3d";
+        scene.add(tiles.group);
+        tiles.setCamera(camera);
+        tiles.setResolutionFromRenderer(camera, renderer);
+        tiles.manager.addHandler(/\.(gltf|glb)$/g, gltfLoader);
+
+        let handled = false;
+        tiles.addEventListener("load-tileset", function onTilesetLoad() {
+          if (handled) return;
+          handled = true;
+          tiles.removeEventListener("load-tileset", onTilesetLoad);
+
+          // Compute bounding sphere center in ECEF, convert to Mercator, build group matrix
+          const sphere = new THREE.Sphere();
+          tiles.getBoundingSphere(sphere);
+          const c = sphere.center;
+          const pos = ecefToLngLatAlt(c.x, c.y, c.z);
+          const mc  = maplibregl.MercatorCoordinate.fromLngLat([pos.lng, pos.lat], pos.alt);
+          const s   = mc.meterInMercatorCoordinateUnits();
+
+          tiles.group.matrix
+            .makeTranslation(mc.x, mc.y, mc.z)
+            .scale(new THREE.Vector3(s, -s, s))
+            .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+          tiles.group.matrixAutoUpdate = false;
+
+          if (statusEl) statusEl.textContent = "✓ Google 3D active — zoom 14+ for full detail";
+        });
+
+        tiles.addEventListener("load-error", () => {
+          if (statusEl) statusEl.textContent = "⚠ Google 3D load error — check API key & billing";
+        });
+      },
+
+      render(gl, args) {
+        if (!tiles) return;
+        // args is the mercator matrix from MapLibre — decompose into camera matrices
+        const matrix = new THREE.Matrix4().fromArray(args);
+        camera.projectionMatrix.copy(matrix);
+        camera.projectionMatrixInverse.copy(matrix).invert();
+
+        tiles.setCamera(camera);
+        tiles.setResolutionFromRenderer(camera, renderer);
+        tiles.update();
+
+        renderer.resetState();
+        renderer.render(scene, camera);
+        map.triggerRepaint();
+      },
+
+      onRemove() {
+        if (tiles) { tiles.dispose?.(); tiles = null; }
+        if (renderer) { renderer.dispose(); renderer = null; }
+        scene = null; camera = null;
+      }
+    };
+
+    if (!map.getLayer("google-3d-tiles")) {
+      removeBuildings();  // avoid z-fighting with OSM extrusions
+      map.addLayer(customLayer);
+      _google3dLayer = customLayer;
+      if (statusEl) statusEl.textContent = "Connecting to Google 3D Tiles...";
+    }
+  }
+
+  function disableGoogle3D() {
+    if (map.getLayer("google-3d-tiles")) {
+      map.removeLayer("google-3d-tiles");
+    }
+    _google3dLayer = null;
+    const statusEl = document.getElementById("google3d-status");
+    if (statusEl) statusEl.textContent = "";
+    // Re-enable OSM buildings if checkbox is checked
+    if (document.getElementById("opt-buildings")?.checked && currentMode === "3d") {
+      ensureBuildings();
+    }
+  }
+
+  function getFirstSymbolLayer() {
+    const layers = map.getStyle()?.layers || [];
+    for (const l of layers) { if (l.type === "symbol") return l.id; }
+    return undefined;
+  }
+
+  // ── City fly-to ──────────────────────────────────────────────────────
+  function flyToCity(key) {
+    const c = CITY_COORDS[key];
+    if (!c) return;
+    if (currentMode !== "3d") {
+      currentMode = "3d";
+      document.querySelectorAll(".mode-pill").forEach(p => p.classList.remove("active"));
+      document.getElementById("mode-3d").classList.add("active");
+      document.getElementById("section-3d").style.display = "";
+      document.getElementById("row-terrain3d").style.display = "";
+      document.getElementById("row-exag").style.display = "";
+    }
+    ensureHillshade();
+    teardown3DCoverageLayer();
+    map.flyTo({ center: c.center, zoom: c.zoom, pitch: c.pitch, bearing: c.bearing, duration: 2500, essential: true });
+    map.once("moveend", () => {
+      if (document.getElementById("opt-terrain")?.checked) applyTerrain3D();
+      if (document.getElementById("opt-buildings")?.checked && !map.getLayer("google-3d-tiles")) ensureBuildings();
+    });
+  }
+
+  // ── Metro coverage dots ───────────────────────────────────────────────
+  function setup3DCoverageLayer() {
+    if (map.getSource("metro-src")) return;
+    const metros = [
+      [-87.630,41.878,"Chicago"], [-74.006,40.713,"New York"],
+      [-118.244,34.052,"Los Angeles"], [-95.370,29.760,"Houston"],
+      [-104.990,39.739,"Denver"], [-87.907,43.039,"Milwaukee"],
+      [-75.165,39.952,"Philadelphia"], [-117.161,32.716,"San Diego"],
+      [-96.797,32.776,"Dallas"], [-122.419,37.775,"San Francisco"],
+      [-97.743,30.267,"Austin"], [-122.332,47.606,"Seattle"],
+    ];
+    map.addSource("metro-src", { type: "geojson", data: { type: "FeatureCollection",
+      features: metros.map(([lon,lat,name]) => ({ type:"Feature",
+        geometry:{ type:"Point", coordinates:[lon,lat] }, properties:{name} }))
+    }});
+    map.addLayer({ id: "metro-halos", type: "circle", source: "metro-src",
+      minzoom:3, maxzoom:13,
+      paint: { "circle-radius":["interpolate",["linear"],["zoom"],3,8,10,28],
+               "circle-color":"rgba(76,175,132,0.08)",
+               "circle-stroke-color":"rgba(76,175,132,0.5)",
+               "circle-stroke-width":1.5 } });
+    map.addLayer({ id: "metro-labels", type: "symbol", source: "metro-src",
+      minzoom:5, maxzoom:13,
+      layout: { "text-field":["concat","3D ▲ ",["get","name"]], "text-size":10,
+                "text-anchor":"top","text-offset":[0,1.1],
+                "text-font":["Open Sans Bold","Arial Unicode MS Bold"] },
+      paint: { "text-color":"rgba(120,220,170,0.9)","text-halo-color":"rgba(0,0,0,.65)","text-halo-width":1 } });
+    map.on("click","metro-halos", e => {
+      const coords = e.features[0]?.geometry?.coordinates;
+      const nm = e.features[0]?.properties?.name;
+      if (!coords) return;
+      const key = Object.keys(CITY_COORDS).find(k => Math.abs(CITY_COORDS[k].center[0]-coords[0]) < 0.5);
+      if (key) { flyToCity(key); return; }
+      map.flyTo({ center: coords, zoom: 14.5, pitch: 60, bearing: -20, duration: 2500 });
+      map.once("moveend", () => { if (document.getElementById("opt-terrain")?.checked) applyTerrain3D(); });
+    });
+    map.on("mouseenter","metro-halos", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave","metro-halos", () => { map.getCanvas().style.cursor = ""; });
+  }
+
+  function teardown3DCoverageLayer() {
+    ["metro-labels","metro-halos"].forEach(id => { try { if(map.getLayer(id)) map.removeLayer(id); } catch(_){} });
+    try { if(map.getSource("metro-src")) map.removeSource("metro-src"); } catch(_) {}
+  }
+
+  // ── Layer toggle listeners ────────────────────────────────────────────
+  document.getElementById("opt-hillshade").addEventListener("change", e => {
+    e.target.checked ? ensureHillshade() : removeHillshade();
+  });
+  document.getElementById("opt-elev-color").addEventListener("change", e => {
+    e.target.checked ? ensureElevColor() : removeElevColor();
+  });
+  document.getElementById("opt-slope").addEventListener("change", e => {
+    e.target.checked ? ensureSlopeLayer() : removeSlopeLayer();
+  });
+  document.getElementById("opt-contours").addEventListener("change", e => {
+    e.target.checked ? ensureContours() : removeContours();
+  });
+  document.getElementById("opt-buildings").addEventListener("change", e => {
+    if (!e.target.checked) { removeBuildings(); return; }
+    if (currentMode === "3d" && !map.getLayer("google-3d-tiles")) ensureBuildings();
+  });
+
+  document.getElementById("opt-terrain").addEventListener("change", e => {
+    if (!e.target.checked) { removeTerrain3D(); return; }
+    if (currentMode === "3d") applyTerrain3D();
+  });
+
+  document.getElementById("opt-google3d").addEventListener("change", async e => {
+    if (!e.target.checked) { disableGoogle3D(); return; }
+    try {
+      await enableGoogle3D(GOOGLE_MAPS_KEY);
+    } catch(err) {
+      console.error("Google 3D error:", err);
+      const statusEl = document.getElementById("google3d-status");
+      if (statusEl) statusEl.textContent = "Error: " + err.message;
+      e.target.checked = false;
+    }
+  });
+  document.getElementById("terrain-exag").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    document.getElementById("exag-val").textContent = v + "×";
+    if (_terrainOn && map.getTerrain()) {
+      try { map.setTerrain({ source: "dem-src", exaggeration: v }); } catch(_) {}
+    }
+  });
+
+  // ── AOI Draw (Milestone 2) ────────────────────────────────────────────
+  // Simple 4-click rectangle draw: click 4 corners, auto-close
+  let _aoiClickCount = 0;
+  let _aoiClickPoints = [];
+  let _aoiMapClickHandler = null;
+
+  function setLidarStatus(msg, color) {
+    const el = document.getElementById("lidar-aoi-status");
+    if (el) { el.textContent = msg; el.style.color = color || "var(--muted)"; }
+  }
+
+  function startAoiDraw() {
+    _aoiDrawing = true;
+    _aoiClickCount = 0;
+    _aoiClickPoints = [];
+    document.getElementById("btn-draw-aoi").style.display = "none";
+    document.getElementById("btn-cancel-aoi").style.display = "";
+    document.getElementById("lidar-candidates").innerHTML = "";
+    document.getElementById("lidar-job-panel").style.display = "none";
+    setLidarStatus("Click 2 opposite corners of your area of interest on the map.", "#4caf84");
+    map.getCanvas().style.cursor = "crosshair";
+
+    _aoiMapClickHandler = (e) => {
+      _aoiClickPoints.push([e.lngLat.lng, e.lngLat.lat]);
+      _aoiClickCount++;
+      setLidarStatus(`Corner ${_aoiClickCount}/2 placed. ${_aoiClickCount < 2 ? "Click opposite corner." : "Processing..."}`, "#4caf84");
+      if (_aoiClickCount >= 2) {
+        map.off("click", _aoiMapClickHandler);
+        _aoiMapClickHandler = null;
+        map.getCanvas().style.cursor = "";
+        finishAoiDraw();
+      }
+    };
+    map.on("click", _aoiMapClickHandler);
+  }
+
+  function cancelAoiDraw() {
+    _aoiDrawing = false;
+    _aoiClickPoints = [];
+    if (_aoiMapClickHandler) { map.off("click", _aoiMapClickHandler); _aoiMapClickHandler = null; }
+    map.getCanvas().style.cursor = "";
+    document.getElementById("btn-draw-aoi").style.display = "";
+    document.getElementById("btn-cancel-aoi").style.display = "none";
+    setLidarStatus("", "");
+    // Remove AOI overlay if present
+    try { if(map.getLayer("aoi-outline")) map.removeLayer("aoi-outline"); } catch(_){}
+    try { if(map.getLayer("aoi-fill")) map.removeLayer("aoi-fill"); } catch(_){}
+    try { if(map.getSource("aoi-src")) map.removeSource("aoi-src"); } catch(_){}
+  }
+
+  function finishAoiDraw() {
+    document.getElementById("btn-cancel-aoi").style.display = "none";
+    document.getElementById("btn-draw-aoi").style.display = "";
+
+    // Build bbox polygon from 2 corners
+    const [p1, p2] = _aoiClickPoints;
+    const west  = Math.min(p1[0], p2[0]);
+    const east  = Math.max(p1[0], p2[0]);
+    const south = Math.min(p1[1], p2[1]);
+    const north = Math.max(p1[1], p2[1]);
+
+    const coords = [[west,south],[east,south],[east,north],[west,north],[west,south]];
+    const geojsonPoly = { type:"Polygon", coordinates: [coords] };
+
+    // Draw AOI on map
+    try { if(map.getLayer("aoi-outline")) map.removeLayer("aoi-outline"); } catch(_){}
+    try { if(map.getLayer("aoi-fill")) map.removeLayer("aoi-fill"); } catch(_){}
+    try { if(map.getSource("aoi-src")) map.removeSource("aoi-src"); } catch(_){}
+    map.addSource("aoi-src", { type:"geojson", data: { type:"Feature", geometry: geojsonPoly, properties:{} } });
+    map.addLayer({ id:"aoi-fill", type:"fill", source:"aoi-src",
+      paint: { "fill-color":"rgba(76,175,132,0.12)", "fill-outline-color":"#4caf84" } });
+    map.addLayer({ id:"aoi-outline", type:"line", source:"aoi-src",
+      paint: { "line-color":"#4caf84", "line-width":2, "line-dasharray":[4,2] } });
+
+    discoverLidarCoverage(geojsonPoly);
+  }
+
+  // ── Coverage discovery call ───────────────────────────────────────────
+  async function discoverLidarCoverage(geometry) {
+    setLidarStatus("Checking USGS 3DEP LiDAR coverage...", "#7ec8e3");
+    try {
+      const r = await fetch(`${LIDAR_API}/coverage`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "apikey": SUPABASE_ANON },
+        body: JSON.stringify({ geometry, purpose: "preplan" }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setLidarStatus("Error: " + (data.error || r.status), "#e74c3c");
+        return;
+      }
+      _aoiGeoHash = data.aoi?.geometryHash;
+      renderCoverageCandidates(data);
+    } catch(e) {
+      setLidarStatus("Network error: " + e.message, "#e74c3c");
+    }
+  }
+
+  function renderCoverageCandidates(data) {
+    const container = document.getElementById("lidar-candidates");
+    const { candidates = [], aoi, warning } = data;
+
+    if (warning) setLidarStatus("⚠ " + warning, "#f5a623");
+    else if (!candidates.length) { setLidarStatus("No USGS 3DEP LiDAR coverage found for this area.", "#e05"); return; }
+    else setLidarStatus(`Found ${candidates.length} dataset${candidates.length > 1 ? "s" : ""} — ${aoi.cached ? "cached" : "live USGS query"}.`, "#4caf84");
+
+    container.innerHTML = candidates.slice(0,5).map((c,i) => `
+      <div style="padding:7px 8px;margin-bottom:5px;background:rgba(255,255,255,0.04);border-radius:5px;border:1px solid var(--border);font-size:10px;">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px;">${c.name}</div>
+        <div style="color:var(--muted);line-height:1.6;">
+          Acquired: <strong style="color:var(--text);">${c.acquisitionDate}</strong> &nbsp;
+          Point cloud: <strong style="color:${c.hasPointCloud ? "#4caf84" : "#e05"};">${c.hasPointCloud ? "Yes" : "No"}</strong><br>
+          Density: ${c.pointDensity ? c.pointDensity + " pts/m²" : "unknown"} &nbsp;
+          Datum: ${c.verticalDatum} &nbsp;
+          Score: ${(c.suitabilityScore * 100).toFixed(0)}%
+        </div>
+        ${c.warnings?.length ? `<div style="color:#f5a623;margin-top:3px;">${c.warnings[0]}</div>` : ""}
+        <button onclick="requestLidarJob('${c.sourceId}','${c.name.replace(/'/g,"&#39;")}')"
+          style="margin-top:5px;width:100%;padding:4px;background:rgba(76,175,132,0.15);border:1px solid #4caf84;border-radius:3px;color:#4caf84;font-size:10px;font-weight:600;cursor:pointer;">
+          Queue Processing Job
+        </button>
+      </div>`).join("");
+  }
+
+  // ── Job creation ──────────────────────────────────────────────────────
+  async function requestLidarJob(sourceId, sourceName) {
+    if (!_aoiGeoHash) { setLidarStatus("AOI not set — draw an area first.", "#e05"); return; }
+    const jobPanel = document.getElementById("lidar-job-panel");
+    jobPanel.style.display = "";
+    jobPanel.innerHTML = `<div style="font-size:10px;color:var(--muted);">Queuing job for <strong>${sourceName}</strong>...</div>`;
+    try {
+      const r = await fetch(`${LIDAR_API}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json","apikey": SUPABASE_ANON },
+        body: JSON.stringify({ geometryHash: _aoiGeoHash, sourceId, jobType: "standard",
+          products: ["dem","dsm","hillshade","slope","aspect","contours"] }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        jobPanel.innerHTML = `<div style="color:#e05;font-size:10px;">Error: ${data.error}</div>`;
+        return;
+      }
+      const job = data.job;
+      renderJobStatus(job, data.cached);
+      if (!data.cached) startJobPolling(job.id);
+    } catch(e) {
+      jobPanel.innerHTML = `<div style="color:#e05;font-size:10px;">Network error: ${e.message}</div>`;
+    }
+  }
+
+  function renderJobStatus(job, cached) {
+    const jobPanel = document.getElementById("lidar-job-panel");
+    const statusColor = { queued:"#f5a623", discovering:"#7ec8e3", running:"#4caf84",
+      succeeded:"#4caf84", failed:"#e05", cancelled:"#888", expired:"#888" };
+    const col = statusColor[job.status] || "var(--muted)";
+    jobPanel.innerHTML = `
+      <div style="padding:7px 8px;background:rgba(255,255,255,0.04);border-radius:5px;border:1px solid var(--border);font-size:10px;">
+        <div style="font-weight:700;color:var(--text);margin-bottom:4px;">Processing Job ${cached ? "(cached)" : "(new)"}</div>
+        <div style="color:var(--muted);line-height:1.7;">
+          Status: <strong style="color:${col};">${job.status}</strong>
+          ${job.stage ? ` &bull; Stage: ${job.stage}` : ""}<br>
+          ${job.progress_percent ? `Progress: ${job.progress_percent}%<br>` : ""}
+          Type: ${job.job_type} &bull; Pipeline v${job.pipeline_version}
+        </div>
+        ${job.status === "succeeded" && job.lidar_artifacts?.length ?
+          `<div style="margin-top:5px;color:#4caf84;">✓ ${job.lidar_artifacts.length} artifact(s) ready</div>` : ""}
+        ${job.status === "queued" || job.status === "running" ?
+          `<div style="margin-top:5px;font-size:9px;color:var(--muted);">Processing requires a PDAL worker. This job is queued and will complete when the worker processes it.</div>` : ""}
+        ${job.error_message_safe ? `<div style="color:#e05;margin-top:4px;">${job.error_message_safe}</div>` : ""}
+        <div style="margin-top:6px;font-size:9px;color:var(--muted);opacity:.6;">
+          Source: USGS 3DEP &middot; Static context only &mdash; verify current conditions through field reports.
+        </div>
+      </div>`;
+  }
+
+  function startJobPolling(jobId) {
+    if (_jobPollInterval) clearInterval(_jobPollInterval);
+    let attempts = 0;
+    _jobPollInterval = setInterval(async () => {
+      attempts++;
+      if (attempts > 60) { clearInterval(_jobPollInterval); return; }
+      try {
+        const r = await fetch(`${LIDAR_API}/jobs/${jobId}`, {
+          headers: { "apikey": SUPABASE_ANON }
+        });
+        const data = await r.json();
+        if (r.ok && data.job) {
+          renderJobStatus(data.job, false);
+          if (["succeeded","failed","cancelled","expired"].includes(data.job.status)) {
+            clearInterval(_jobPollInterval);
+          }
+        }
+      } catch(_) {}
+    }, 5000);
+  }
+
+  // Zoom tracker for status display only (no tile ops)
+  map.on("zoom", () => {
+    const z = map.getZoom();
+    // Show contours hint
+    if (document.getElementById("opt-contours")?.checked) {
+      if (!map.getSource("ct-src") && z >= 12) ensureContours();
+    }
+  });
+
+
+  // ── Basemap switching ──────────────────────────────────────────────────
+  document.getElementById("basemap-select").addEventListener("change", (e) => {
+    currentBasemap = e.target.value;
+    // Remove all raster background layers and sources, then add new one
+    const style = map.getStyle();
+    // Rebuild: easiest approach is to apply a new style but preserve data layers
+    // Instead, we swap the raster source URL directly
+    const bm = BASEMAP_STYLES[currentBasemap];
+    const newSourceKey = Object.keys(bm.sources)[0];
+    const newTiles = bm.sources[newSourceKey].tiles;
+
+    // Update existing bg raster source if it exists
+    const bgLayer = style.layers.find(l => l.id === "bg");
+    if (bgLayer) {
+      const srcId = bgLayer.source;
+      try { map.getSource(srcId).setTiles(newTiles); }
+      catch(_) {
+        // Source type changed — need full style rebuild preserving data layers
+        rebuildBasemap(currentBasemap);
+      }
+    }
+  });
+
+  function rebuildBasemap(name) {
+    // Collect current data sources/layers to re-add after style change
+    const snap = snapshotDataLayers();
+    map.setStyle(BASEMAP_STYLES[name]);
+    map.once("styledata", () => {
+      restoreDataLayers(snap);
+      // Re-apply terrain layers after style swap
+      if (currentMode === "3d" || currentMode === "25d") {
+        setTimeout(() => {
+          if (document.getElementById("opt-hillshade")?.checked) ensureHillshade();
+          if (document.getElementById("opt-elev-color")?.checked) ensureElevColor();
+          if (document.getElementById("opt-slope")?.checked) ensureSlopeLayer();
+          if (document.getElementById("opt-contours")?.checked) ensureContours();
+          if (currentMode === "3d" && document.getElementById("opt-terrain")?.checked) applyTerrain3D();
+        }, 400);
+      }
+    });
+  }
+
+  // Snapshot / restore pattern for style swapping (simplified — stores GeoJSON sources)
+  function snapshotDataLayers() {
+    const sources = {};
+    const style = map.getStyle();
+    (style.sources || []);
+    // We store GeoJSON feature collections by source id
+    const DATA_SOURCES = ["nifc-src","noaa-src","depts-src","stations-src","incidents-src","fema-src","tri-src","cameras-src"];
+    DATA_SOURCES.forEach(id => {
+      try { const s = map.getSource(id); if (s && s._data) sources[id] = s._data; } catch(_) {}
+    });
+    return sources;
+  }
+
+  function restoreDataLayers(snap) {
+    Object.entries(snap).forEach(([id, data]) => {
+      try {
+        if (!map.getSource(id)) map.addSource(id, { type:"geojson", data });
+        else map.getSource(id).setData(data);
+      } catch(_) {}
+    });
+    rebuildMapLayers();
+  }
+
+  // ── State filter ───────────────────────────────────────────────────────
+  const stateSel = document.getElementById("state-filter");
+  Object.keys(STATE_BBOXES).sort().forEach(s => {
+    const o = document.createElement("option"); o.value = s; o.textContent = s;
+    stateSel.appendChild(o);
+  });
+  stateSel.addEventListener("change", () => {
+    const state = stateSel.value;
+    if (state && STATE_BBOXES[state]) {
+      const bb = STATE_BBOXES[state];
+      map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], { padding: 30, duration: 800 });
+    } else {
+      map.flyTo({ center:[-98.35,39.5], zoom:4 });
+    }
+    loadAllLayers();
+  });
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+  function setStatus(msg) {
+    const el = document.getElementById("load-status");
+    if (!el) return;
+    el.textContent = msg;
+  }
+  function setBadge(id, n) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (n === null || n === undefined) ? "—" : String(n);
+  }
+  function esc(s) {
+    if (!s) return "";
+    return String(s).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]||c));
+  }
+
+  async function fetchJSON(url, opts = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000); // fast-fail; data is best-effort
+    try {
+      const r = await fetch(url, { ...opts, signal: ctrl.signal, headers: { "User-Agent": "FireIntelMap/1.0", ...(opts.headers || {}) } });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    } catch(e) { clearTimeout(timer); throw e; }
+  }
+
+  function stateBbox(state) {
+    const bb = STATE_BBOXES[state];
+    return bb ? `${bb[0]},${bb[1]},${bb[2]},${bb[3]}` : null;
+  }
+
+  // ── Ensure GeoJSON source + layer exists ───────────────────────────────
+  function upsertSource(id, data) {
+    if (map.getSource(id)) map.getSource(id).setData(data);
+    else map.addSource(id, { type:"geojson", data, cluster: false });
+  }
+
+  function upsertClusterSource(id, data, clusterRadius = 50) {
+    if (map.getSource(id)) { map.getSource(id).setData(data); return; }
+    map.addSource(id, { type:"geojson", data, cluster: true, clusterMaxZoom: 10, clusterRadius });
+  }
+
+  function hasLayer(id) { try { return !!map.getLayer(id); } catch(_) { return false; } }
+
+  // ── Layer setup (called once after map loads, rebuilt on basemap swap) ─
+  function rebuildMapLayers() {
+    // FEMA fill
+    if (!hasLayer("fema-fill")) {
+      map.addLayer({ id:"fema-fill", type:"fill", source:"fema-src",
+        paint: { "fill-color": ["get","_color"], "fill-opacity": 0.45 } });
+      map.addLayer({ id:"fema-stroke", type:"line", source:"fema-src",
+        paint: { "line-color":"#888", "line-width":0.4 } });
+    }
+    // NIFC polygons
+    if (!hasLayer("nifc-fill")) {
+      map.addLayer({ id:"nifc-fill", type:"fill", source:"nifc-src",
+        paint: { "fill-color":"#e74c3c", "fill-opacity":0.25 } });
+      map.addLayer({ id:"nifc-stroke", type:"line", source:"nifc-src",
+        paint: { "line-color":"#e74c3c", "line-width":1.5 } });
+    }
+    // NOAA alert polygons
+    if (!hasLayer("noaa-fill")) {
+      map.addLayer({ id:"noaa-fill", type:"fill", source:"noaa-src",
+        paint: { "fill-color": ["get","_color"], "fill-opacity":0.15 } });
+      map.addLayer({ id:"noaa-stroke", type:"line", source:"noaa-src",
+        paint: { "line-color": ["get","_color"], "line-width":1.5, "line-dasharray":[4,3] } });
+    }
+    // Jurisdiction polygons
+    if (!hasLayer("jurisd-fill")) {
+      map.addLayer({ id:"jurisd-fill", type:"fill", source:"jurisd-src",
+        paint: { "fill-color":"#e67e22", "fill-opacity":0.06 } });
+      map.addLayer({ id:"jurisd-stroke", type:"line", source:"jurisd-src",
+        paint: { "line-color":"#e67e22", "line-width":1.2, "line-dasharray":[4,3] } });
+    }
+    // Dept circles (clustered)
+    if (!hasLayer("depts-cluster")) {
+      map.addLayer({ id:"depts-cluster", type:"circle", source:"depts-src", filter:["has","point_count"],
+        paint: { "circle-color":"#f1c40f", "circle-radius":["step",["get","point_count"],12,10,16,50,20], "circle-stroke-color":"#333","circle-stroke-width":1.5 } });
+      map.addLayer({ id:"depts-cluster-count", type:"symbol", source:"depts-src", filter:["has","point_count"],
+        layout: { "text-field":"{point_count_abbreviated}", "text-size":10 },
+        paint: { "text-color":"#000" } });
+      map.addLayer({ id:"depts-point", type:"circle", source:"depts-src", filter:["!",["has","point_count"]],
+        paint: { "circle-color":"#f1c40f", "circle-radius":5, "circle-stroke-color":"#333","circle-stroke-width":1.2, "circle-opacity":0.9 } });
+    }
+    // Stations circles (clustered)
+    if (!hasLayer("stations-cluster")) {
+      map.addLayer({ id:"stations-cluster", type:"circle", source:"stations-src", filter:["has","point_count"],
+        paint: { "circle-color":"#2ecc71","circle-radius":["step",["get","point_count"],10,10,14,50,18],"circle-stroke-color":"#1a6636","circle-stroke-width":1 } });
+      map.addLayer({ id:"stations-cluster-count", type:"symbol", source:"stations-src", filter:["has","point_count"],
+        layout:{"text-field":"{point_count_abbreviated}","text-size":10}, paint:{"text-color":"#000"} });
+      map.addLayer({ id:"stations-point", type:"circle", source:"stations-src", filter:["!",["has","point_count"]],
+        paint: { "circle-color":"#2ecc71","circle-radius":4,"circle-stroke-color":"#1a6636","circle-stroke-width":1 } });
+    }
+    // NERIS incidents
+    if (!hasLayer("incidents-point")) {
+      map.addLayer({ id:"incidents-point", type:"circle", source:"incidents-src",
+        paint: { "circle-color": ["get","_color"], "circle-radius":5, "circle-stroke-color":"#fff","circle-stroke-width":0.8 } });
+    }
+    // EPA TRI
+    if (!hasLayer("tri-point")) {
+      map.addLayer({ id:"tri-point", type:"circle", source:"tri-src",
+        paint: { "circle-color":"#9b59b6","circle-radius":5,"circle-stroke-color":"#fff","circle-stroke-width":0.8,"circle-opacity":0.85 } });
+    }
+    // Camera pins (clustered)
+    if (!hasLayer("cameras-cluster")) {
+      map.addLayer({ id:"cameras-cluster", type:"circle", source:"cameras-src", filter:["has","point_count"],
+        paint: { "circle-color":"#e74c3c","circle-radius":["step",["get","point_count"],12,10,16],"circle-stroke-color":"#fff","circle-stroke-width":2 } });
+      map.addLayer({ id:"cameras-cluster-count", type:"symbol", source:"cameras-src", filter:["has","point_count"],
+        layout:{"text-field":"📷{point_count_abbreviated}","text-size":10}, paint:{"text-color":"#fff"} });
+      map.addLayer({ id:"cameras-point", type:"circle", source:"cameras-src", filter:["!",["has","point_count"]],
+        paint: { "circle-color":"#e74c3c","circle-radius":7,"circle-stroke-color":"#fff","circle-stroke-width":2.5 } });
+    }
+
+    // Popup interactions
+    wirePopups();
+  }
+
+  // ── Layer visibility ───────────────────────────────────────────────────
+  const LAYER_VISIBILITY = {
+    "lyr-nifc":          ["nifc-fill","nifc-stroke"],
+    "lyr-noaa":          ["noaa-fill","noaa-stroke"],
+    "lyr-neris-depts":   ["depts-cluster","depts-cluster-count","depts-point"],
+    "lyr-neris-jurisd":  ["jurisd-fill","jurisd-stroke"],
+    "lyr-neris-inc":     ["incidents-point"],
+    "lyr-fema-wildfire": ["fema-fill","fema-stroke"],
+    "lyr-neris-stations":["stations-cluster","stations-cluster-count","stations-point"],
+    "lyr-epa-tri":       ["tri-point"],
+    "lyr-cameras":       ["cameras-cluster","cameras-cluster-count","cameras-point"],
+  };
+
+  function setLayerVisibility(cbId, visible) {
+    const ids = LAYER_VISIBILITY[cbId] || [];
+    ids.forEach(id => {
+      if (hasLayer(id)) map.setLayoutProperty(id, "visibility", visible ? "visible" : "none");
+    });
+  }
+
+  Object.keys(LAYER_VISIBILITY).forEach(cbId => {
+    const cb = document.getElementById(cbId);
+    if (!cb) return;
+    cb.addEventListener("change", (e) => {
+      setLayerVisibility(cbId, e.target.checked);
+      if (cbId === "lyr-neris-inc") {
+        document.getElementById("inc-filter-section").style.display = e.target.checked ? "" : "none";
+      }
+    });
+  });
+
+  // Incident type filter
+  document.getElementById("inc-type-filter").addEventListener("change", (e) => {
+    const v = e.target.value;
+    if (hasLayer("incidents-point")) {
+      map.setFilter("incidents-point", v ? ["==",["get","inc_type"],v] : null);
+    }
+  });
+
+  // ── Load all active layers ─────────────────────────────────────────────
+  async function loadAllLayers() {
+    const btn = document.getElementById("load-btn");
+    btn.disabled = true; btn.textContent = "Loading…";
+    setStatus("Fetching data…");
+
+    const state = stateSel.value;
+    const active = (id) => document.getElementById(id)?.checked;
+
+    const promises = [];
+    if (active("lyr-nifc"))           promises.push(loadNIFC(state));
+    if (active("lyr-noaa"))           promises.push(loadNOAA(state));
+    if (active("lyr-neris-depts"))    promises.push(loadNerisDepts(state));
+    if (active("lyr-neris-jurisd"))   promises.push(loadNerisJurisd(state));
+    if (active("lyr-neris-inc"))      promises.push(loadNerisInc(state));
+    // FEMA/EPA are low-priority — defer slightly so NIFC+NOAA+NERIS render first
+    setTimeout(() => {
+      if (active("lyr-fema-wildfire")) loadFemaWildfire(state);
+      if (active("lyr-epa-tri")) loadEpaTri(state);
+    }, 800);
+    if (active("lyr-neris-stations")) promises.push(loadNerisStations(state));
+    if (active("lyr-firms"))          promises.push(loadFirms(state));
+    if (active("lyr-mtbs"))           promises.push(loadMtbs(state));
+    if (active("lyr-landfire"))       loadLandfire();
+    // Camera layer deferred to idle — alertwest API is dead anyway (NXDOMAIN)
+    if (active("lyr-cameras")) setTimeout(() => loadFireCameras(state), 1500);
+    // loadNerisHistory is background-only — defer 3s after critical layers
+    // so it doesn't compete with NIFC / NOAA / NERIS for bandwidth
+    const _histTimer = setTimeout(() => loadNerisHistory(), 3000);
+
+    await Promise.allSettled(promises);
+
+    document.getElementById("stats-strip").style.display = "";
+    btn.disabled = false; btn.textContent = "Load / Refresh Layers";
+    setStatus("Loaded · " + new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
+    setTimeout(() => setStatus(""), 4000);
+
+    if (state && STATE_BBOXES[state]) {
+      const bb = STATE_BBOXES[state];
+      map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], { padding:30 });
+    }
+  }
+
+  document.getElementById("load-btn").addEventListener("click", loadAllLayers);
+
+  // ── Dept search + type filter (client-side MapLibre filter on loaded data) ──
+  function _applyDeptFilters() {
+    const search   = (document.getElementById("dept-search")?.value || "").toLowerCase().trim();
+    const deptType = (document.getElementById("dept-type-filter")?.value || "").toLowerCase();
+    // Build MapLibre filter expression
+    const filters = ["all", ["!", ["has", "point_count"]]]; // only individual points, not clusters
+    if (search) {
+      filters.push(["in", search, ["downcase", ["get", "name"]]]);
+    }
+    if (deptType) {
+      filters.push(["in", deptType, ["downcase", ["get", "dept_type"]]]);
+    }
+    if (map.getLayer("depts-point")) {
+      map.setFilter("depts-point", filters.length > 2 ? filters : ["!", ["has", "point_count"]]);
+    }
+  }
+  document.getElementById("dept-search")?.addEventListener("input", _applyDeptFilters);
+  document.getElementById("dept-type-filter")?.addEventListener("change", _applyDeptFilters);
+
+  // ── EMPTY GeoJSON ──────────────────────────────────────────────────────
+  const EMPTY_FC = { type:"FeatureCollection", features:[] };
+
+  // ── NIFC Wildfire Perimeters ───────────────────────────────────────────
+  async function loadNIFC(state) {
+    if (!map.getSource("nifc-src")) { map.addSource("nifc-src", { type:"geojson", data:EMPTY_FC }); }
+    try {
+      const year = new Date().getFullYear();
+      // Use ESRI timestamp syntax (not DATE function which is not supported on this service)
+      const whereBase = `poly_CreateDate >= timestamp '${year}-01-01 00:00:00' AND poly_GISAcres > 10`;
+      const where = state ? `${whereBase} AND attr_POOState='US-${state}'` : whereBase;
+      // 500-record geojson+orderBy takes 10s+ and times out.
+      // 200 records no orderBy = 0.6s. Sort client-side after.
+      const params = new URLSearchParams({
+        where,
+        outFields: "poly_IncidentName,poly_GISAcres,attr_IncidentName,attr_POOState,attr_PercentContained,attr_FireCauseGeneral,poly_CreateDate",
+        outSR: "4326", f: "geojson", resultRecordCount: 200,
+      });
+      const data = await fetchJSON(`${NIFC_URL}?${params}`);
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      // Sort client-side by acreage descending
+      if (data.features) {
+        data.features.sort((a,b) => (b.properties?.poly_GISAcres||0) - (a.properties?.poly_GISAcres||0));
+      }
+      map.getSource("nifc-src").setData(data);
+      const n = (data.features||[]).length;
+      setBadge("badge-nifc", n); document.getElementById("stat-fires").textContent = n;
+    } catch(e) { setBadge("badge-nifc","err"); console.error("NIFC:",e); }
+  }
+
+  // ── NOAA Fire Weather Alerts ───────────────────────────────────────────
+  const FIRE_ALERT_EVENTS = new Set(["Red Flag Warning","Fire Weather Watch","Extreme Fire Danger","Fire Warning","Blowing Dust Warning","Blowing Dust Advisory","Wind Advisory","High Wind Warning","High Wind Watch","Extreme Heat Warning","Heat Advisory","Heat Watch"]);
+
+  async function loadNOAA(state) {
+    if (!map.getSource("noaa-src")) map.addSource("noaa-src", { type:"geojson", data:EMPTY_FC });
+    try {
+      const params = new URLSearchParams({ active:"true", limit:500 });
+      if (state) params.set("area", state);
+      const data = await fetchJSON(`${NOAA_URL}?${params}`);
+      const fireAlerts = (data.features||[]).filter(f => FIRE_ALERT_EVENTS.has(f.properties?.event));
+      setBadge("badge-noaa", fireAlerts.length);
+      document.getElementById("stat-alerts").textContent = fireAlerts.length;
+
+      const withGeom = fireAlerts.filter(f => f.geometry);
+      const needZones = fireAlerts.filter(f => !f.geometry);
+      // Cap zone lookups: max 6 zones, 2s timeout each — don't block the whole layer
+      const zoneUrls = [...new Set(needZones.flatMap(f => (f.properties?.affectedZones||[]).slice(0,2)))].slice(0,6);
+      const zoneGeoMap = {};
+      await Promise.allSettled(zoneUrls.map(async url => {
+        try {
+          const r = await fetch(url, { headers:{"Accept":"application/geo+json"}, signal: AbortSignal.timeout(2000) });
+          if (r.ok) { const z = await r.json(); if (z.geometry) zoneGeoMap[url] = z.geometry; }
+        } catch(_) {}
+      }));
+
+      const feats = [];
+      for (const f of withGeom) {
+        const ev = f.properties?.event || "";
+        feats.push({ type:"Feature", geometry:f.geometry, properties:{ ...f.properties, _color: ev.includes("Warning") ? "#e74c3c":"#f39c12" }});
+      }
+      for (const f of needZones) {
+        for (const zurl of (f.properties?.affectedZones||[]).slice(0,3)) {
+          if (zoneGeoMap[zurl]) {
+            const ev = f.properties?.event||"";
+            feats.push({ type:"Feature", geometry:zoneGeoMap[zurl], properties:{ ...f.properties, _color: ev.includes("Warning")?"#e74c3c":"#f39c12" }});
+          }
+        }
+      }
+      map.getSource("noaa-src").setData({ type:"FeatureCollection", features:feats });
+    } catch(e) { setBadge("badge-noaa","err"); console.error("NOAA:",e); }
+  }
+
+  // ── NERIS Dept / Station loaders — Supabase cache first, static JSON fallback
+
+  async function _checkSupabaseReady() {
+    if (_supabaseNerisReady !== null) return _supabaseNerisReady;
+    // Session-level cache — avoid re-hitting Supabase on every loadAllLayers()
+    const cached = sessionStorage.getItem("supabase_neris_ready");
+    if (cached !== null) { _supabaseNerisReady = cached === "1"; return _supabaseNerisReady; }
+    try {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/neris_sync_state?dataset=eq.neris_departments&select=record_count`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }, signal: AbortSignal.timeout(4000) }
+      );
+      if (!r.ok) { _supabaseNerisReady = false; sessionStorage.setItem("supabase_neris_ready","0"); return false; }
+      const rows = await r.json();
+      _supabaseNerisReady = (rows[0]?.record_count ?? 0) > 1000;
+    } catch(_) { _supabaseNerisReady = false; }
+    sessionStorage.setItem("supabase_neris_ready", _supabaseNerisReady ? "1" : "0");
+    return _supabaseNerisReady;
+  }
+
+  async function _loadNerisFromSupabase(layer, state) {
+    // Build bbox from current map viewport
+    const bounds = map.getBounds();
+    const params = new URLSearchParams({
+      min_lon: bounds.getWest().toFixed(4),
+      min_lat: bounds.getSouth().toFixed(4),
+      max_lon: bounds.getEast().toFixed(4),
+      max_lat: bounds.getNorth().toFixed(4),
+      layer,
+      limit: 2000,
+    });
+    if (state) params.set("state", state);
+    const data = await fetchJSON(`${NERIS_EDGE_FN}?${params}`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    return data; // GeoJSON FeatureCollection with .meta
+  }
+
+  async function _loadNerisFromStaticJSON(layer, state) {
+    // Static JSON files are 9-28MB — avoid loading them at all.
+    // Try the Supabase Edge Function directly even if readiness check is unknown.
+    // If that fails, return empty FeatureCollection (better than 10s stall on a 28MB fetch).
+    try {
+      const bounds = map.getBounds();
+      const params = new URLSearchParams({
+        min_lon: bounds.getWest().toFixed(4), min_lat: bounds.getSouth().toFixed(4),
+        max_lon: bounds.getEast().toFixed(4), max_lat: bounds.getNorth().toFixed(4),
+        layer, limit: 2000,
+      });
+      if (state) params.set("state", state);
+      const data = await fetchJSON(`${NERIS_EDGE_FN}?${params}`, {
+        headers: { apikey: SUPABASE_ANON_KEY }, signal: AbortSignal.timeout(6000),
+      });
+      if (data?.features?.length) return data;
+    } catch(_) {}
+    // True last resort: return empty — user can hit Load/Refresh when ready
+    return { type:"FeatureCollection", features:[], meta:{ source:"unavailable", layer } };
+  }
+
+  async function loadNerisDepts(state) {
+    const useSupabase = await _checkSupabaseReady();
+    let fc;
+    try {
+      if (useSupabase) {
+        fc = await _loadNerisFromSupabase("departments", state);
+      } else {
+        fc = await _loadNerisFromStaticJSON("departments", state);
+      }
+    } catch(e) {
+      // Supabase failed — fall back to static
+      console.warn("[map] Supabase NERIS dept query failed, falling back:", e);
+      fc = await _loadNerisFromStaticJSON("departments", state);
+    }
+    if (!fc) { setBadge("badge-depts","err"); return; }
+
+    const n = (fc.features||[]).length;
+    setBadge("badge-depts", n.toLocaleString() + (useSupabase ? " ✓" : " (cached)"));
+    document.getElementById("stat-depts").textContent = n.toLocaleString();
+
+    if (map.getSource("depts-src")) map.getSource("depts-src").setData(fc);
+    else map.addSource("depts-src", { type:"geojson", data:fc, cluster:true, clusterMaxZoom:10, clusterRadius:40 });
+
+    // Show freshness in status bar
+    if (fc.meta?.cache_freshness) {
+      const d = new Date(fc.meta.cache_freshness);
+      setStatus(`NERIS depts: ${n.toLocaleString()} in view · refreshed ${d.toLocaleDateString()}`);
+      setTimeout(() => setStatus(""), 5000);
+    }
+  }
+
+  async function loadNerisStations(state) {
+    const useSupabase = await _checkSupabaseReady();
+    let fc;
+    try {
+      if (useSupabase) {
+        fc = await _loadNerisFromSupabase("stations", state);
+      } else {
+        fc = await _loadNerisFromStaticJSON("stations", state);
+      }
+    } catch(e) {
+      console.warn("[map] Supabase NERIS station query failed, falling back:", e);
+      fc = await _loadNerisFromStaticJSON("stations", state);
+    }
+    if (!fc) { setBadge("badge-stations","err"); return; }
+
+    const n = (fc.features||[]).length;
+    setBadge("badge-stations", n.toLocaleString() + (useSupabase ? " ✓" : ""));
+
+    if (map.getSource("stations-src")) map.getSource("stations-src").setData(fc);
+    else map.addSource("stations-src", { type:"geojson", data:fc, cluster:true, clusterMaxZoom:11, clusterRadius:30 });
+  }
+
+  // ── NERIS Jurisdiction Boundaries ─────────────────────────────────────
+  async function loadNerisJurisd(state) {
+    if (!map.getSource("jurisd-src")) map.addSource("jurisd-src", { type:"geojson", data:EMPTY_FC });
+    if (!state) { setBadge("badge-jurisd","select state"); return; }
+    const bb = stateBbox(state);
+    const params = new URLSearchParams({ where:"1=1", outFields:"neris_id,name,department_type,region_type", outSR:"4326", f:"geojson", resultRecordCount:500, ...(bb?{geometry:bb,geometryType:"esriGeometryEnvelope",spatialRel:"esriSpatialRelIntersects"}:{}) });
+    try {
+      const data = await fetchJSON(`${NERIS_DEPT}/2/query?${params}`);
+      map.getSource("jurisd-src").setData(data);
+      setBadge("badge-jurisd",(data.features||[]).length);
+    } catch(e) { setBadge("badge-jurisd","err"); }
+  }
+
+  // ── NERIS Incidents (INC_SVC is count-only — show national total from intel JSON) ──
+  const NERIS_COLORS = { FIRE:"#e74c3c",MEDICAL:"#3498db",HAZSIT:"#f39c12",RESCUE:"#9b59b6",PUBSERV:"#2ecc71",NOEMERG:"#95a5a6",UNKNOWN:"#bdc3c7" };
+
+  // Populate stat-inc + badge-inc from the intel summary (no live API needed)
+  async function _populateNerisTotalCount() {
+    try {
+      const intel = await fetchJSON("neris_public_intel.json");
+      const total = intel?.meta?.total_incidents;
+      const badge = total ? (total / 1e6).toFixed(1) + "M" : "—";
+      setBadge("badge-inc", badge);
+      const el = document.getElementById("stat-inc");
+      if (el) el.textContent = total ? total.toLocaleString() : "—";
+    } catch(e) { /* silently ignore */ }
+  }
+
+  async function loadNerisInc(state) {
+    if (!map.getSource("incidents-src")) map.addSource("incidents-src", { type:"geojson", data:EMPTY_FC });
+    // NERIS INC_SVC is permanently count-only — show total from intel summary
+    await _populateNerisTotalCount();
+  }
+
+  let _nerisHistory = null;
+  async function loadNerisHistory() {
+    if (!_nerisHistory) {
+      try { _nerisHistory = await fetchJSON(NERIS_HISTORY_URL); } catch(e) { return; }
+    }
+    // History file has all zeros (INC_SVC locked) — fall back to total count
+    const months = _nerisHistory.months || {};
+    const keys = Object.keys(months).sort();
+    const latest = keys.length ? months[keys[keys.length-1]] : null;
+    if (latest?.total > 0) {
+      const el = document.getElementById("stat-inc");
+      if (el) el.textContent = latest.total.toLocaleString() + " (latest mo)";
+    } else {
+      await _populateNerisTotalCount();
+    }
+  }
+
+  // ── FEMA Wildfire Risk (NRI) ───────────────────────────────────────────
+  const FEMA_RISK_COLORS = { "Very Low":"#ffffb2","Relatively Low":"#fecc5c","Relatively Moderate":"#fd8d3c","Relatively High":"#f03b20","Very High":"#bd0026" };
+  let _femaCache = {};
+  // ── FIRMS NASA Fire Hotspots (24h, public CSV endpoint) ───────────────────
+  async function loadFirms(state) {
+    if (!map.getSource("firms-src")) map.addSource("firms-src", { type:"geojson", data:EMPTY_FC });
+    try {
+      // FIRMS public area API — no key needed for CSV, we use VIIRS NOAA-20 (highest res)
+      const bb = state ? stateBbox(state) : [-130, 24, -65, 50];
+      const [w, s, e, n] = bb || [-130, 24, -65, 50];
+      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/NOAA_20_VIIRS_C2/${w},${s},${e},${n}/1`;
+      const resp = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (!resp.ok) throw new Error(`FIRMS ${resp.status}`);
+      const csv = await resp.text();
+      const lines = csv.trim().split("\n").slice(1); // skip header
+      const features = [];
+      for (const line of lines) {
+        const cols = line.split(",");
+        if (cols.length < 8) continue;
+        const lat = parseFloat(cols[0]), lon = parseFloat(cols[1]);
+        const bright = parseFloat(cols[2]) || 0;
+        const frp    = parseFloat(cols[12]) || parseFloat(cols[7]) || 0;
+        if (!isFinite(lat) || !isFinite(lon)) continue;
+        features.push({ type:"Feature", geometry:{ type:"Point", coordinates:[lon,lat] },
+          properties:{ brightness: bright, frp, acq_date: cols[5], confidence: cols[8] || "" } });
+      }
+      const fc = { type:"FeatureCollection", features };
+      map.getSource("firms-src").setData(fc);
+      setBadge("badge-firms", features.length.toLocaleString());
+      if (!map.getLayer("firms-point")) {
+        map.addLayer({ id:"firms-point", type:"circle", source:"firms-src",
+          paint: {
+            "circle-radius": ["interpolate",["linear"],["get","frp"], 0,4, 50,9, 200,14],
+            "circle-color":  ["interpolate",["linear"],["get","brightness"], 300,"#ff9900", 400,"#ff4400", 500,"#ff0000"],
+            "circle-opacity": 0.82,
+            "circle-stroke-color": "#fff", "circle-stroke-width": 0.6
+          }
+        });
+        map.on("click","firms-point",(e)=>{
+          const p = e.features[0].properties;
+          showPopup(e.lngLat, `<div class="pop-tag" style="background:#ff660022;color:#ff6600;">🔥 FIRE HOTSPOT · NASA FIRMS</div>
+            <div class="pop-row">Brightness: <b>${p.brightness}K</b> · FRP: <b>${p.frp} MW</b></div>
+            <div class="pop-muted">Date: ${p.acq_date} · Confidence: ${p.confidence}</div>
+            <div class="pop-warning">VIIRS NOAA-20 24h active fire detection. Not ground-truth — verify with local agencies.</div>`);
+        });
+        map.on("mouseenter","firms-point",()=>map.getCanvas().style.cursor="pointer");
+        map.on("mouseleave","firms-point",()=>map.getCanvas().style.cursor="");
+      }
+    } catch(e) {
+      setBadge("badge-firms", "err");
+      console.warn("[map] FIRMS load failed:", e.message);
+    }
+  }
+
+  // ── MTBS Historical Burn Perimeters (USDA Forest Service ArcGIS) ─────────
+  async function loadMtbs(state) {
+    if (!map.getSource("mtbs-src")) map.addSource("mtbs-src", { type:"geojson", data:EMPTY_FC });
+    try {
+      const bb = state ? stateBbox(state) : null;
+      const geomStr = bb ? `&geometry=${bb[0]},${bb[1]},${bb[2]},${bb[3]}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects` : "";
+      // Filter to large fires (>1000 acres) to keep the layer readable
+      const url = `https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_MTBS_01/MapServer/63/query?where=BurnBndAc%3E1000&outFields=Ig_Date,Incid_Name,BurnBndAc,dNBR_offst&outSR=4326&f=geojson&resultRecordCount=400${geomStr}`;
+      const data = await fetchJSON(url);
+      if (!data?.features) throw new Error("no features");
+      map.getSource("mtbs-src").setData(data);
+      setBadge("badge-mtbs", (data.features.length).toLocaleString());
+      if (!map.getLayer("mtbs-fill")) {
+        map.addLayer({ id:"mtbs-fill", type:"fill", source:"mtbs-src",
+          paint:{ "fill-color":"#8B4513", "fill-opacity":0.25 } });
+        map.addLayer({ id:"mtbs-stroke", type:"line", source:"mtbs-src",
+          paint:{ "line-color":"#d2691e", "line-width":1, "line-dasharray":[3,2] } });
+        map.on("click","mtbs-fill",(e)=>{
+          const p = e.features[0].properties;
+          const acres = p.BurnBndAc ? Math.round(p.BurnBndAc).toLocaleString() : "?";
+          const yr = p.Ig_Date ? p.Ig_Date.slice(0,4) : "?";
+          showPopup(e.lngLat, `<div class="pop-tag" style="background:#8B451322;color:#d2691e;">🔥 BURN HISTORY · MTBS</div>
+            <div class="pop-row"><b>${esc(p.Incid_Name||"Unnamed fire")}</b></div>
+            <div class="pop-muted">${yr} · ${acres} acres</div>
+            <div class="pop-warning">USDA MTBS 1984–2023. Historical record — not active fire.</div>`);
+        });
+        map.on("mouseenter","mtbs-fill",()=>map.getCanvas().style.cursor="pointer");
+        map.on("mouseleave","mtbs-fill",()=>map.getCanvas().style.cursor="");
+      }
+    } catch(e) {
+      setBadge("badge-mtbs", "err");
+      console.warn("[map] MTBS load failed:", e.message);
+    }
+  }
+
+  // ── LANDFIRE Fuel Model (WMS raster tile, public, no key needed) ──────────
+  // LANDFIRE 2023 Fire Behavior Fuel Models (FBFM40) via ArcGIS Image Service
+  function loadLandfire() {
+    const LF_URL = "https://landfire.cr.usgs.gov/arcgis/rest/services/Landfire/US_230/MapServer";
+    // Layer 7 = FBFM40 fuel model (40 Scott-Burgan classes, color-coded by fire behavior)
+    const tileUrl = `${LF_URL}/tile/{z}/{y}/{x}`;
+    if (map.getSource("landfire-src")) {
+      setBadge("badge-landfire", "✓");
+      return;
+    }
+    try {
+      map.addSource("landfire-src", {
+        type:"raster",
+        tiles:[tileUrl],
+        tileSize:256,
+        attribution:"LANDFIRE 2.3.0 · USGS/USDA · Public domain",
+        minzoom:5, maxzoom:15
+      });
+      map.addLayer({ id:"landfire-tiles", type:"raster", source:"landfire-src",
+        paint:{ "raster-opacity":0.55 } }, "firms-point"); // insert below FIRMS hotspots
+      setBadge("badge-landfire", "✓");
+    } catch(e) {
+      // Try WMS fallback
+      try {
+        map.addSource("landfire-src", {
+          type:"raster",
+          tiles:[`https://landfire.cr.usgs.gov/arcgis/services/Landfire/US_230/MapServer/WMSServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=7&STYLES=&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true`],
+          tileSize:256,
+          attribution:"LANDFIRE 2.3.0 · USGS/USDA"
+        });
+        map.addLayer({ id:"landfire-tiles", type:"raster", source:"landfire-src",
+          paint:{ "raster-opacity":0.55 } });
+        setBadge("badge-landfire", "✓");
+      } catch(e2) {
+        setBadge("badge-landfire", "err");
+        console.warn("[map] LANDFIRE load failed:", e2.message);
+      }
+    }
+  }
+
+  async function loadFemaWildfire(state) {
+    if (!map.getSource("fema-src")) map.addSource("fema-src", { type:"geojson", data:EMPTY_FC });
+    const cacheKey = state||"__all__";
+    if (_femaCache[cacheKey]) { map.getSource("fema-src").setData(_femaCache[cacheKey]); return; }
+    const where = state ? `STATEABBRV='${state}'` : "1=1";
+    const params = new URLSearchParams({ where, outFields:"COUNTY,STATEABBRV,RISK_SCORE,RISK_RATNG,WFIR_HLRR,WFIR_EVNTS,WFIR_EALB", returnGeometry:"true", outSR:"4326", f:"geojson", resultRecordCount:"3200" });
+    try {
+      const data = await fetchJSON(`${FEMA_NRI_SVC}/query?${params}`);
+      const feats = (data.features||[]).map(f => {
+        const r = f.properties?.WFIR_HLRR||"Very Low";
+        return { ...f, properties:{ ...f.properties, _color: FEMA_RISK_COLORS[r]||"#ffffb2" } };
+      });
+      const fc = { type:"FeatureCollection", features:feats };
+      _femaCache[cacheKey] = fc;
+      map.getSource("fema-src").setData(fc);
+    } catch(e) { console.error("FEMA:",e); }
+  }
+
+  // ── EPA TRI ────────────────────────────────────────────────────────────
+  async function loadEpaTri(state) {
+    if (!map.getSource("tri-src")) map.addSource("tri-src", { type:"geojson", data:EMPTY_FC });
+    const where = state ? `STATE_ABBR='${state}'` : "1=1";
+    const params = new URLSearchParams({ where, outFields:"FACILITY_NAME,CITY,STATE_ABBR,PRIMARY_NAICS_TITLE,TOTAL_RELEASES", outSR:"4326", f:"json", resultRecordCount:500 });
+    try {
+      const data = await fetchJSON(`${EPA_TRI}?${params}`);
+      const feats = (data.features||[]).filter(f => f.geometry?.x && f.geometry?.y).map(f => ({
+        type:"Feature", geometry:{ type:"Point", coordinates:[f.geometry.x, f.geometry.y] },
+        properties:{ name:f.attributes?.FACILITY_NAME||"", city:f.attributes?.CITY||"", state:f.attributes?.STATE_ABBR||"", industry:f.attributes?.PRIMARY_NAICS_TITLE||"", releases:f.attributes?.TOTAL_RELEASES||0 },
+      }));
+      map.getSource("tri-src").setData({ type:"FeatureCollection", features:feats });
+      setBadge("badge-tri", feats.length);
+    } catch(e) { setBadge("badge-tri","err"); }
+  }
+
+  // ── 🎥 Fire Cameras (ALERTWildfire / AlertWest) ────────────────────────
+  // Curated seed list for when the live API is unavailable (CORS/offline)
+  // These are publicly known ALERTWildfire camera locations
+  const SEED_CAMERAS = [
+    { name:"Mt. Laguna", state:"CA", lon:-116.4236, lat:32.8661, region:"Southern California" },
+    { name:"Otay Mountain", state:"CA", lon:-116.8203, lat:32.5701, region:"Southern California" },
+    { name:"Pine Valley", state:"CA", lon:-116.5267, lat:32.8272, region:"Southern California" },
+    { name:"Ramona", state:"CA", lon:-116.8675, lat:33.0417, region:"Southern California" },
+    { name:"Palomar Mountain", state:"CA", lon:-116.8631, lat:33.3625, region:"Southern California" },
+    { name:"San Bernardino Peak", state:"CA", lon:-117.0483, lat:34.1656, region:"Southern California" },
+    { name:"Arrowhead", state:"CA", lon:-117.1883, lat:34.2455, region:"Southern California" },
+    { name:"Big Bear", state:"CA", lon:-116.9144, lat:34.2437, region:"Southern California" },
+    { name:"Mt. Wilson", state:"CA", lon:-118.0567, lat:34.2244, region:"Southern California" },
+    { name:"Mt. Diablo", state:"CA", lon:-121.9141, lat:37.8816, region:"Northern California" },
+    { name:"Mt. Tamalpais", state:"CA", lon:-122.5981, lat:37.9235, region:"Northern California" },
+    { name:"Loma Prieta", state:"CA", lon:-121.8178, lat:37.1193, region:"Northern California" },
+    { name:"Bald Mountain (Napa)", state:"CA", lon:-122.4106, lat:38.5268, region:"Northern California" },
+    { name:"Lake Tahoe NW", state:"CA", lon:-120.1534, lat:39.2154, region:"Sierra Nevada" },
+    { name:"Grass Valley", state:"CA", lon:-121.0611, lat:39.2190, region:"Sierra Nevada" },
+    { name:"Shasta", state:"CA", lon:-122.3169, lat:40.8094, region:"Northern California" },
+    { name:"Mt. Aukum", state:"CA", lon:-120.7236, lat:38.5548, region:"Sierra Nevada" },
+    { name:"Donner", state:"CA", lon:-120.3265, lat:39.3198, region:"Sierra Nevada" },
+    { name:"Boise Ridge", state:"ID", lon:-115.8936, lat:43.6894, region:"Idaho" },
+    { name:"Helena Ridge", state:"MT", lon:-112.0274, lat:46.5958, region:"Montana" },
+    { name:"Chelan Butte", state:"WA", lon:-120.0241, lat:47.8367, region:"Washington" },
+    { name:"Waterville Plateau", state:"WA", lon:-120.0598, lat:47.6434, region:"Washington" },
+    { name:"Windy Ridge", state:"OR", lon:-121.8255, lat:46.2559, region:"Oregon" },
+    { name:"Siskiyou", state:"OR", lon:-122.6312, lat:42.0672, region:"Oregon" },
+    { name:"Humboldt Peak", state:"NV", lon:-118.1458, lat:40.9372, region:"Nevada" },
+    { name:"Virginia Range", state:"NV", lon:-119.6734, lat:39.5417, region:"Nevada" },
+    { name:"Sierra Blanca", state:"NM", lon:-105.8114, lat:33.3742, region:"New Mexico" },
+    { name:"Chiricahua", state:"AZ", lon:-109.2936, lat:32.0256, region:"Arizona" },
+    { name:"Mount Graham", state:"AZ", lon:-109.8728, lat:32.7019, region:"Arizona" },
+    { name:"Castle Dome", state:"AZ", lon:-114.1947, lat:33.0964, region:"Arizona" },
+    { name:"San Dimas", state:"CA", lon:-117.7928, lat:34.1133, region:"Southern California" },
+  ];
+
+  let _cameraData = [];
+
+  async function loadFireCameras(state) {
+    if (!map.getSource("cameras-src")) {
+      map.addSource("cameras-src", { type:"geojson", data:EMPTY_FC, cluster:true, clusterMaxZoom:9, clusterRadius:35 });
+    }
+
+    // Try live API first (alertwest.org DNS currently NXDOMAIN — falls back to seeds immediately)
+    let cameras = [];
+    let usingLiveApi = false;
+    try {
+      const raw = await Promise.race([
+        fetchJSON(ALERTWEST_API),
+        new Promise((_,r) => setTimeout(() => r(new Error("timeout")), 4000)),
+      ]);
+      const arr = Array.isArray(raw) ? raw : (raw.cameras||raw.data||[]);
+      const mapped = arr.filter(c => c.position?.lat && c.position?.lon).map(c => ({
+        name: c.name || c.site?.name || "Fire Camera",
+        state: (c.site?.state||c.state||"").toUpperCase(),
+        lon: c.position.lon, lat: c.position.lat,
+        region: c.site?.region || c.source || "",
+        imageUrl: c.image?.url || "",
+        cameraId: c.name || c.site?.name || "",
+        source: "alertwest_api",
+      }));
+      if (mapped.length > 0) { cameras = mapped; usingLiveApi = true; }
+      else cameras = SEED_CAMERAS;
+    } catch(_) {
+      cameras = SEED_CAMERAS;
+    }
+    // Update badge label to reflect data source
+    const camLiveEl = document.querySelector(".badge-3d[style*='e74c3c']");
+    if (camLiveEl) camLiveEl.textContent = usingLiveApi ? "LIVE" : "SEED";
+
+    let filtered = cameras;
+    if (state) filtered = cameras.filter(c => !c.state || c.state === state || c.state === "");
+
+    _cameraData = filtered;
+    setBadge("badge-cameras", filtered.length);
+
+    const fc = { type:"FeatureCollection", features: filtered.map(c => ({
+      type:"Feature", geometry:{ type:"Point", coordinates:[c.lon, c.lat] },
+      properties:{ name:c.name, state:c.state||"", region:c.region||"", imageUrl:c.imageUrl||"", cameraId:c.cameraId||c.name, source:c.source||"seed" },
+    }))};
+
+    map.getSource("cameras-src").setData(fc);
+  }
+
+  // ── Camera Modal ───────────────────────────────────────────────────────
+  let _currentCam = null;
+  let _camRefreshInterval = null;
+
+  function openCameraModal(props) {
+    _currentCam = props;
+    document.getElementById("cam-title").textContent = props.name || "Fire Camera";
+    document.getElementById("cam-meta").innerHTML =
+      `<span>${esc(props.region||props.state||"")}</span>` +
+      `<span>Source: ALERTWildfire / AlertCalifornia (UCSD)</span>` +
+      `<span style="color:var(--warn);">Reference only — not operational dispatch data</span>`;
+
+    refreshCamImage();
+    document.getElementById("cam-modal").classList.add("open");
+
+    // Clear old auto-refresh
+    if (_camRefreshInterval) clearInterval(_camRefreshInterval);
+    // Auto-refresh every 2 minutes
+    _camRefreshInterval = setInterval(refreshCamImage, 120000);
+  }
+
+  function refreshCamImage() {
+    if (!_currentCam) return;
+    const img = document.getElementById("cam-img");
+    const loading = document.getElementById("cam-loading");
+    loading.textContent = "Loading image…";
+    loading.style.display = "flex";
+    img.style.display = "none";
+
+    // Build image URL
+    // If we have a direct URL from the API, use it (cache-bust with timestamp)
+    let src = _currentCam.imageUrl || "";
+    if (!src) {
+      // Fallback: use alertwildfire.org viewer page (no direct image URL from seed)
+      src = "";
+    }
+
+    if (src) {
+      // Add cache-buster to force refresh (changes every minute)
+      const bust = "?_t=" + Math.floor(Date.now()/60000);
+      img.src = src + bust;
+    } else {
+      // No direct URL (seed camera) — show instruction with link
+      loading.innerHTML = `No direct image URL available for this camera.<br><br>
+        <a href="https://www.alertwildfire.org/?camera=${encodeURIComponent(_currentCam.cameraId||_currentCam.name||'')}" 
+           target="_blank" rel="noopener" 
+           style="color:var(--accent);text-decoration:none;font-weight:600;">Open live feed on ALERTWildfire.org ↗</a><br><br>
+        <span style="font-size:10px;color:var(--muted);">This camera is in the public network but requires the ALERTWildfire viewer.<br>Tip: select a state filter (CA is best covered) to see cameras with direct image feeds.</span>`;
+    }
+
+    const ts = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    document.getElementById("cam-refresh-ts").textContent = "Last checked: " + ts;
+
+    // External link
+    const camName = encodeURIComponent(_currentCam.cameraId || _currentCam.name || "");
+    document.getElementById("cam-ext-link").href = `https://www.alertwildfire.org/?camera=${camName}`;
+  }
+
+  function closeCameraModal() {
+    document.getElementById("cam-modal").classList.remove("open");
+    if (_camRefreshInterval) { clearInterval(_camRefreshInterval); _camRefreshInterval = null; }
+  }
+
+  document.getElementById("cam-close").addEventListener("click", closeCameraModal);
+  document.getElementById("cam-modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeCameraModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCameraModal(); });
+
+  // ── Popup interactions ──────────────────────────────────────────────────
+  let _popup = null;
+
+  function showPopup(coords, html) {
+    if (_popup) _popup.remove();
+    _popup = new maplibregl.Popup({ maxWidth:"300px", closeButton:true, closeOnClick:false })
+      .setLngLat(coords).setHTML(html).addTo(map);
+  }
+
+  function wirePopups() {
+    // NIFC perimeter click
+    ["nifc-fill","nifc-stroke"].forEach(id => {
+      if (!hasLayer(id)) return;
+      map.on("click", id, (e) => {
+        const p = e.features[0].properties;
+        const name = p.attr_IncidentName||p.poly_IncidentName||"Unnamed Fire";
+        const acres = p.poly_GISAcres ? Math.round(p.poly_GISAcres).toLocaleString() : "?";
+        const pct = p.attr_PercentContained != null ? `${p.attr_PercentContained}% contained` : "";
+        showPopup(e.lngLat, `<div class="pop-tag" style="background:#e74c3c22;color:#e74c3c;">🔥 WILDFIRE</div><div class="pop-row"><b>${esc(name)}</b></div><div class="pop-muted">${esc((p.attr_POOState||"").replace("US-",""))} · ${acres} acres</div>${pct?`<div style="color:#2ecc71;font-size:11px;">${esc(pct)}</div>`:""}`);
+      });
+      map.on("mouseenter", id, () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", id, () => map.getCanvas().style.cursor = "");
+    });
+
+    // NOAA alert click
+    ["noaa-fill"].forEach(id => {
+      if (!hasLayer(id)) return;
+      map.on("click", id, (e) => {
+        const p = e.features[0].properties;
+        showPopup(e.lngLat, `<div class="pop-tag" style="background:#f39c1222;color:#f39c12;">⚠️ ${esc(p.event)}</div><div class="pop-row"><b>${esc(p.headline||p.areaDesc||"")}</b></div><div class="pop-muted">Severity: ${esc(p.severity||"")} · Expires: ${p.expires?new Date(p.expires).toLocaleString():"?"}</div>`);
+      });
+      map.on("mouseenter", id, () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", id, () => map.getCanvas().style.cursor = "");
+    });
+
+    // NERIS dept click
+    if (hasLayer("depts-point")) {
+      map.on("click","depts-point", (e) => {
+        const p = e.features[0].properties;
+        const career = Number(p.firefighters_career_ft || 0);
+        const vol    = Number(p.firefighters_volunteer || 0);
+        const pop    = Number(p.population_protected || 0);
+        const ffLine = (career || vol) ? `<div class="pop-muted">FF: ${career ? career.toLocaleString()+' career' : ''} ${career && vol ? '· ' : ''}${vol ? vol.toLocaleString()+' volunteer' : ''}</div>` : '';
+        const popLine = pop ? `<div class="pop-muted">Population served: ${pop.toLocaleString()}</div>` : '';
+        showPopup(e.lngLat,
+          `<div class="pop-tag" style="background:#f1c40f22;color:#f1c40f;">🚒 ${esc(p.dept_type||'FIRE DEPT')}</div>
+           <div class="pop-row"><b>${esc(p.name)}</b></div>
+           <div class="pop-muted">${esc(p.city||'')}, ${esc(p.state||'')} &nbsp;·&nbsp; Stations: ${p.station_count||p.stations||'—'} &nbsp;·&nbsp; Units: ${p.unit_count||p.units||'—'}</div>
+           ${ffLine}${popLine}
+           ${p.website?`<a class="pop-link" href="${esc(p.website)}" target="_blank" rel="noopener">Official website ↗</a>`:''}
+           <div class="pop-warning">NERIS public data · not a real-time operational record.</div>`
+        );
+      });
+      map.on("click","depts-cluster", (e) => {
+        const src = map.getSource("depts-src");
+        const feat = e.features[0];
+        src.getClusterExpansionZoom(feat.properties.cluster_id, (err, zoom) => {
+          if (!err) map.easeTo({ center: feat.geometry.coordinates, zoom });
+        });
+      });
+      map.on("mouseenter","depts-point",    () => map.getCanvas().style.cursor="pointer");
+      map.on("mouseleave","depts-point",    () => map.getCanvas().style.cursor="");
+      map.on("mouseenter","depts-cluster",  () => map.getCanvas().style.cursor="pointer");
+      map.on("mouseleave","depts-cluster",  () => map.getCanvas().style.cursor="");
+    }
+
+    // Stations click
+    if (hasLayer("stations-point")) {
+      map.on("click","stations-point", (e) => {
+        const p = e.features[0].properties;
+        showPopup(e.lngLat, `<div class="pop-tag" style="background:#2ecc7122;color:#2ecc71;">🏠 STATION</div><div class="pop-row"><b>${esc(p.name)}</b></div><div class="pop-muted">${esc(p.city)}, ${esc(p.state)}<br>Dept: ${esc(p.dept_name)}<br>Units: ${p.unit_count}</div><div class="pop-warning">Public reference data (NERIS). Not real-time.</div>`);
+      });
+      map.on("click","stations-cluster", (e) => {
+        const src = map.getSource("stations-src");
+        src.getClusterExpansionZoom(e.features[0].properties.cluster_id, (err, zoom) => {
+          if (!err) map.easeTo({ center:e.features[0].geometry.coordinates, zoom });
+        });
+      });
+      map.on("mouseenter","stations-point",()=>map.getCanvas().style.cursor="pointer");
+      map.on("mouseleave","stations-point",()=>map.getCanvas().style.cursor="");
+    }
+
+    // EPA TRI click
+    if (hasLayer("tri-point")) {
+      map.on("click","tri-point",(e)=>{
+        const p=e.features[0].properties;
+        showPopup(e.lngLat,`<div class="pop-tag" style="background:#9b59b622;color:#9b59b6;">☠️ EPA TRI</div><div class="pop-row"><b>${esc(p.name)}</b></div><div class="pop-muted">${esc(p.city)}, ${esc(p.state)}<br>${esc(p.industry)}<br>Releases: ${Number(p.releases||0).toLocaleString()} lbs</div>`);
+      });
+      map.on("mouseenter","tri-point",()=>map.getCanvas().style.cursor="pointer");
+      map.on("mouseleave","tri-point",()=>map.getCanvas().style.cursor="");
+    }
+
+    // FEMA risk click
+    if (hasLayer("fema-fill")) {
+      map.on("click","fema-fill",(e)=>{
+        const p=e.features[0].properties;
+        const ealb = p.WFIR_EALB ? `$${Math.round(p.WFIR_EALB).toLocaleString()}` : "N/A";
+        showPopup(e.lngLat,`<div class="pop-tag" style="background:#e74c3c22;color:#e74c3c;">🔥 WILDFIRE RISK</div><div class="pop-row"><b>${esc(p.COUNTY)} Co., ${esc(p.STATEABBRV)}</b></div><div class="pop-muted">Wildfire Risk: <b>${esc(p.WFIR_HLRR||"N/A")}</b><br>NRI Score: ${p.RISK_SCORE?Number(p.RISK_SCORE).toFixed(1):"N/A"}<br>Est. Annual Loss: ${ealb}</div><div class="pop-muted" style="font-size:10px;">Source: FEMA NRI Dec 2025 v1.20</div>`);
+      });
+      map.on("mouseenter","fema-fill",()=>map.getCanvas().style.cursor="pointer");
+      map.on("mouseleave","fema-fill",()=>map.getCanvas().style.cursor="");
+    }
+
+    // Camera pin click
+    if (hasLayer("cameras-point")) {
+      map.on("click","cameras-point",(e)=>{
+        const p = e.features[0].properties;
+        openCameraModal(p);
+      });
+      map.on("click","cameras-cluster",(e)=>{
+        const src=map.getSource("cameras-src");
+        src.getClusterExpansionZoom(e.features[0].properties.cluster_id,(err,zoom)=>{
+          if(!err) map.easeTo({center:e.features[0].geometry.coordinates,zoom});
+        });
+      });
+      map.on("mouseenter","cameras-point",()=>{ map.getCanvas().style.cursor="pointer"; });
+      map.on("mouseleave","cameras-point",()=>{ map.getCanvas().style.cursor=""; });
+    }
+
+    // Jurisdiction click
+    if (hasLayer("jurisd-fill")) {
+      map.on("click","jurisd-fill",(e)=>{
+        const p=e.features[0].properties;
+        showPopup(e.lngLat,`<div class="pop-tag" style="background:#e67e2222;color:#e67e22;">📐 JURISDICTION</div><div class="pop-row"><b>${esc(p.name)}</b></div><div class="pop-muted">Type: ${esc(p.department_type||"?")}<br>Region: ${esc(p.region_type||"?")}</div>`);
+      });
+    }
+  }
+
+  // ── Map ready → init all sources and layers ─────────────────────────────
+  map.on("load", () => {
+    // Pre-add all GeoJSON sources with empty data so layers can be added immediately
+    const SOURCES = {
+      "nifc-src":     { type:"geojson", data:EMPTY_FC },
+      "noaa-src":     { type:"geojson", data:EMPTY_FC },
+      "depts-src":    { type:"geojson", data:EMPTY_FC, cluster:true, clusterMaxZoom:10, clusterRadius:40 },
+      "stations-src": { type:"geojson", data:EMPTY_FC, cluster:true, clusterMaxZoom:11, clusterRadius:30 },
+      "incidents-src":{ type:"geojson", data:EMPTY_FC },
+      "jurisd-src":   { type:"geojson", data:EMPTY_FC },
+      "fema-src":     { type:"geojson", data:EMPTY_FC },
+      "tri-src":      { type:"geojson", data:EMPTY_FC },
+      "cameras-src":  { type:"geojson", data:EMPTY_FC, cluster:true, clusterMaxZoom:9, clusterRadius:35 },
+    };
+    Object.entries(SOURCES).forEach(([id,cfg]) => { if (!map.getSource(id)) map.addSource(id, cfg); });
+    rebuildMapLayers();
+  });
+
+  </script>
+</body>
+</html>

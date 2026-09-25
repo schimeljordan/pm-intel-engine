@@ -1,0 +1,65 @@
+# SaaS CRM & Sales Technology — Example Config
+
+domain:
+  name: "CRM & Sales Technology"
+  short_name: "CRM Intel"
+  description: "Market intelligence for CRM, sales enablement, and RevOps software"
+  icon: "📊"
+  personas:
+    - { key: sales_rep,    label: "Sales Representative" }
+    - { key: sales_ops,    label: "Sales Operations / RevOps" }
+    - { key: sales_mgr,    label: "Sales Manager" }
+    - { key: cro,          label: "CRO / VP Sales" }
+    - { key: it_admin,     label: "CRM Admin / IT" }
+    - { key: marketer,     label: "Marketing / Demand Gen" }
+  categories:
+    - "Data Quality & Enrichment"
+    - "Pipeline & Forecasting"
+    - "Integrations & Automation"
+    - "Reporting & Analytics"
+    - "User Adoption & UX"
+    - "Pricing & Packaging"
+    - "AI & Automation Features"
+    - "Enterprise & Security"
+
+storage:
+  db_path: data/scraper.db
+
+crawler:
+  user_agent: "pm-intel-engine/1.0 (saas-crm)"
+  timeout_seconds: 10
+
+web_search:
+  queries:
+    - 'CRM software (problem OR frustration OR complaint OR workaround) 2025'
+    - '"Salesforce" (complaint OR limitation OR expensive OR alternative) 2025'
+    - '"HubSpot" (problem OR integration OR pricing OR complaint) 2025'
+    - '"Pipedrive" OR "Zoho CRM" (review OR problem OR comparison) 2025'
+    - 'sales rep CRM (time wasted OR manual data entry OR not using) 2025'
+    - '"RevOps" (data quality OR forecast accuracy OR CRM problem)'
+    - 'site:g2.com "CRM" (negative review OR complaint OR missing feature)'
+    - 'site:reddit.com/r/sales (CRM OR salesforce OR hubspot problem)'
+    - '"sales enablement" (software OR tool OR problem OR ROI) 2025'
+  results_per_query: 50
+  recency_days: 365
+  engines: [google_news_rss, bing_news_rss, duckduckgo]
+
+sources:
+  industry_sites:
+    - { type: rss,  url: "https://blog.hubspot.com/rss.xml" }
+    - { type: rss,  url: "https://www.salesforce.com/blog/feed/" }
+    - { type: page, url: "https://www.saleshacker.com/" }
+    - { type: rss,  url: "https://www.revops.co/feed" }
+
+reddit:
+  subreddits: [sales, salesforce, hubspot, RevOps, b2bmarketing, entrepreneur]
+  limit_per_sub: 500
+  lookback_days: 365
+
+fire_relevance_keywords:
+  - crm, salesforce, hubspot, pipeline, forecast, sales rep, quota
+  - integration, workflow, automation, data quality, revenue
+
+self_improve:
+  enabled: true
+  require_approval: true

@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "buildCommand": "python3 -c \"import re, pathlib; [pathlib.Path(f).write_text(re.sub(r'__GOOGLE_MAPS_KEY__', __import__('os').environ.get('GOOGLE_MAPS_KEY',''), pathlib.Path(f).read_text())) for f in ['dashboard/map.html'] if pathlib.Path(f).exists()]\" || true",
+  "outputDirectory": "dashboard",
+  "routes": [
+    { "src": "/", "dest": "/index.html" },
+    { "src": "/map", "dest": "/map.html" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+beautifulsoup4
+readability-lxml
+lxml
+python-dateutil
+requests
+PyYAML
+praw
+pandas
+matplotlib
+tiktoken
+feedparser
+tldextract
+ddgs>=9.0
+openai>=1.30.0,<2.0.0
+tenacity>=8.2.3
+rapidfuzz>=3.9.6

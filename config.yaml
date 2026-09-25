@@ -1,0 +1,158 @@
+# ============================================================
+# PM Intel Engine — Domain Configuration
+# ============================================================
+# Copy this file, fill in your domain, and point the pipeline
+# at it with: CONFIG_PATH=config.yaml (or your custom path)
+#
+# The dashboard, pipeline, summariser, and VOC taxonomy all
+# derive from this single file. No code changes needed.
+# ============================================================
+
+domain:
+  name: "Your Industry"           # Full name shown in dashboard header
+  short_name: "Intel"             # Short name for badges and titles
+  description: "Competitive intelligence and voice-of-customer analysis for your industry"
+  icon: "🔍"                      # Emoji shown in dashboard
+
+  # Personas shown in filters and battlecard columns.
+  # Use the roles that actually exist in your market.
+  personas:
+    - { key: executive,       label: "Executive / Decision Maker" }
+    - { key: product_manager, label: "Product Manager" }
+    - { key: ops_manager,     label: "Operations Manager" }
+    - { key: it_manager,      label: "IT / Data Manager" }
+    - { key: end_user,        label: "End User / Practitioner" }
+    - { key: procurement,     label: "Procurement / Finance" }
+
+  # VOC categories — the buckets your signals are classified into.
+  # These drive the bar chart and filter chips. Use 6–12 categories.
+  categories:
+    - "Product & Feature Gaps"
+    - "Data & Integration"
+    - "User Experience & Workflow"
+    - "Pricing & Packaging"
+    - "Compliance & Standards"
+    - "Competitive Dynamics"
+    - "Procurement & Funding"
+    - "Operations & Training"
+
+# ============================================================
+# STORAGE
+# ============================================================
+storage:
+  db_path: data/scraper.db
+
+# ============================================================
+# CRAWLER RUNTIME
+# ============================================================
+crawler:
+  user_agent: "pm-intel-engine/1.0 (+github.com/schimeljordan/pm-intel-engine)"
+  timeout_seconds: 10
+  min_delay_seconds: 0.3
+  delay_jitter_seconds: 0.2
+  max_articles_per_site: 20
+
+# ============================================================
+# WEB SEARCH — Fill these in for your domain
+# ============================================================
+web_search:
+  queries:
+    # --- Broad discovery ---
+    - 'your industry software news 2025'
+    - 'your industry technology trends'
+    # --- Competitor watchers ---
+    - '"Competitor A" (update OR release OR pricing OR review)'
+    - '"Competitor B" (integration OR API OR update OR complaint)'
+    # --- Pain signal hunts ---
+    - '"your industry" (problem OR challenge OR frustrated OR broken) software'
+    - '"your persona" (workflow OR process OR tool OR workaround)'
+    # --- Community signals ---
+    - 'site:reddit.com "your industry" (software OR tool OR problem)'
+    - 'site:g2.com "your category" review'
+
+  site_limit_per_domain: 50
+  results_per_query: 50
+  recency_days: 365
+  engines:
+    - google_news_rss
+    - bing_news_rss
+    - duckduckgo
+  block_domains:
+    - pinterest.com
+    - facebook.com
+    - linkedin.com
+    - youtube.com
+
+# ============================================================
+# RSS / PAGE SOURCES — Replace with sources for your domain
+# ============================================================
+sources:
+  industry_sites:
+    - { type: rss,  url: "https://your-industry-publication.com/feed/" }
+    - { type: page, url: "https://your-community-forum.com/" }
+
+  magazines_rss:
+    - { type: rss, url: "https://your-trade-magazine.com/rss" }
+
+  extra_file: data/extra_sources.yaml
+
+# ============================================================
+# REDDIT — subreddits relevant to your domain
+# ============================================================
+reddit:
+  subreddits:
+    - yourIndustry
+    - relatedTopic
+  limit_per_sub: 500
+  lookback_days: 365
+  exclude_nsfw: true
+
+# ============================================================
+# COMPETITORS — tracked by the pipeline
+# ============================================================
+# See data/competitors.yaml for detailed competitor profiles
+
+# ============================================================
+# RELEVANCE FILTERING
+# ============================================================
+fire_relevance_keywords:        # rename field to domain_relevance_keywords if desired
+  - your keyword
+  - another keyword
+  - industry term
+
+path_block_terms:
+  - /jobs
+  - /careers
+  - /privacy
+  - /terms
+
+title_block_terms:
+  - internship
+  - job opening
+  - hiring
+
+# ============================================================
+# SELF-IMPROVEMENT (agentic daily updates)
+# ============================================================
+self_improve:
+  enabled: true
+  max_new_sources_per_run: 5
+  max_new_queries_per_run: 3
+  max_new_competitors_per_run: 2
+  min_confidence_to_commit: 60
+  dry_run: false
+  require_approval: true
+
+# ============================================================
+# MODEL AWARENESS PIPELINE
+# ============================================================
+model_awareness:
+  enabled: true
+  hf_tasks:
+    - text-classification
+    - zero-shot-classification
+    - summarization
+    - sentiment-analysis
+  min_downloads: 10000        # ignore niche models
+  auto_benchmark: true        # run against held-out signals before PR
+  require_human_review: true  # always require PR review before prod

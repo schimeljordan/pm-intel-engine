@@ -1,0 +1,74 @@
+# Fire & Life Safety — Reference Domain Config
+# This is the original domain the kernel was extracted from.
+# See schimeljordan/fire-intel-agent for the full implementation.
+
+domain:
+  name: "Fire & Life Safety"
+  short_name: "Fire Intel"
+  description: "Competitive intelligence and VOC analysis for fire & life safety"
+  icon: "🔥"
+  personas:
+    - { key: fire_chief,       label: "Fire Chief" }
+    - { key: fire_marshal,     label: "Fire Marshal / Prevention" }
+    - { key: fire_inspector,   label: "Fire Inspector" }
+    - { key: ahj,              label: "AHJ" }
+    - { key: facility_manager, label: "Facility Manager" }
+    - { key: it_manager,       label: "IT / Data Manager" }
+  categories:
+    - "Inspections & Compliance"
+    - "Data & System Integration"
+    - "Incident Command & Response"
+    - "Communication & Coordination"
+    - "Operations & Training"
+    - "Facilities / Built Environment"
+    - "Community Risk Reduction"
+    - "Wildland/WUI"
+    - "Standards & Codes (NFPA/ICC)"
+    - "Procurement / Grants / Funding"
+
+storage:
+  db_path: data/scraper.db
+
+crawler:
+  user_agent: "pm-intel-engine/1.0 (fire-life-safety)"
+  timeout_seconds: 10
+
+web_search:
+  queries:
+    - 'latest fire inspection software'
+    - '"fire inspection" (software OR technology OR mobile app OR SaaS)'
+    - '"incident command" (software OR system OR app OR technology) fire'
+    - '"computer-aided dispatch" CAD integration fire'
+    - '"NFPA 72" (update OR revision OR 2025 OR TIA OR errata)'
+    - '"First Due" (integration OR API OR update OR release)'
+    - '"Tablet Command" (update OR review OR complaint)'
+    - '"AFG grant" OR "Assistance to Firefighters Grant" (2025 OR application)'
+    - 'site:firehouse.com (technology OR software OR CAD OR inspection)'
+    - 'site:firerescue1.com (technology OR software OR CAD)'
+    - 'site:g2.com "fire inspection" OR "fire prevention software"'
+  results_per_query: 50
+  recency_days: 365
+  engines: [google_news_rss, bing_news_rss, duckduckgo]
+  block_domains: [pinterest.com, facebook.com, linkedin.com, youtube.com]
+
+sources:
+  industry_sites:
+    - { type: rss,  url: "https://www.fireengineering.com/feed/" }
+    - { type: rss,  url: "https://www.firerescue1.com/rss/" }
+    - { type: rss,  url: "https://www.firehouse.com/rss" }
+    - { type: page, url: "https://tabletcommand.com/blog/" }
+    - { type: page, url: "https://www.lexipol.com/resources/blog/" }
+    - { type: page, url: "https://lessonslearned.iafc.org/" }
+
+reddit:
+  subreddits: [firefighting, firefighter, firesafety, fireprotection, wildfire, emergencymanagement]
+  limit_per_sub: 900
+  lookback_days: 720
+
+fire_relevance_keywords:
+  - fire, nfpa, ahj, inspection, cad, rms, dispatch, incident command
+  - accountability, mayday, lodd, span of control, firefighter, apparatus
+
+self_improve:
+  enabled: true
+  require_approval: true

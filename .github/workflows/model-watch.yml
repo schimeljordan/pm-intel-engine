@@ -1,0 +1,27 @@
+name: Model Awareness — Auto-detect new AI models
+
+on:
+  schedule: [{ cron: "0 10 * * *" }]    # daily at 10am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  HF_API_KEY:   ${{ secrets.HF_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt
+      - name: Scan HuggingFace + arXiv for new models
+        run: python -m agent.model_watcher

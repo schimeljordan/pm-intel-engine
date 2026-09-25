@@ -1,0 +1,132 @@
+name: Daily PM Intel Pipeline
+
+on:
+  schedule: [{ cron: "0 14 * * 1-5" }]   # 9am ET weekdays — adjust to your timezone
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Domain config path (e.g. configs/saas-crm.yaml). Leave blank for default.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  OPENAI_API_KEY:            ${{ secrets.OPENAI_API_KEY }}
+  HF_API_KEY:                ${{ secrets.HF_API_KEY }}           # optional: free HuggingFace tier
+  REDDIT_CLIENT_ID:          ${{ secrets.REDDIT_CLIENT_ID }}
+  REDDIT_CLIENT_SECRET:      ${{ secrets.REDDIT_CLIENT_SECRET }}
+  REDDIT_USER_AGENT:         ${{ secrets.REDDIT_USER_AGENT }}
+  REDDIT_USERNAME:           ${{ secrets.REDDIT_USERNAME }}
+  REDDIT_PASSWORD:           ${{ secrets.REDDIT_PASSWORD }}
+  GITHUB_TOKEN:              ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      # ── INGEST ─────────────────────────────────────────────────────────────
+      - name: Scrape RSS & page sources
+        timeout-minutes: 12
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.scraper
+
+      - name: Reddit ingest
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.reddit_ingest
+
+      - name: Web search
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.web_search
+
+      - name: Export latest signals
+        timeout-minutes: 3
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.export_latest || true
+
+      # ── INTEL MODULES ──────────────────────────────────────────────────────
+      - name: Intel — market signals (GDELT, SEC, patents, grants, RFPs)
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: |
+          python -m agent.gdelt_intel    || true &
+          python -m agent.sec_intel      || true &
+          python -m agent.patent_intel   || true &
+          python -m agent.grants_intel   || true &
+          python -m agent.rfp_intel      || true &
+          python -m agent.app_store_intel || true &
+          python -m agent.ecfr_intel     || true &
+          python -m agent.bls_intel      || true &
+          wait
+
+      # ── CLASSIFY & SUMMARISE ───────────────────────────────────────────────
+      # HuggingFace pre-filter runs first (free, graceful fallback).
+      # OpenAI classify runs for unhandled signals. Both are graceful.
+      - name: Classify + JTBD summarise
+        timeout-minutes: 35
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.summariser
+
+      # ── ANALYTICS & EXPORTS ────────────────────────────────────────────────
+      - name: Analytics + exports
+        timeout-minutes: 10
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: |
+          python -m agent.signal_analytics       || true
+          python -m agent.export_competitors     || true
+          python -m agent.export_competitor_news || true
+          python -m agent.ai_publications        || true &
+          python -m agent.export_pm_hub          || true &
+          wait
+
+      - name: Build dashboard
+        timeout-minutes: 5
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.build_dashboard || true
+
+      # ── COMMIT ─────────────────────────────────────────────────────────────
+      - name: Commit dashboard artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase --autostash
+          git add -A dashboard/ data/ 2>/dev/null || true
+          git diff --cached --quiet && echo "No changes." || \
+            (git commit -m "ci: refresh dashboard $(date -u +%Y-%m-%dT%H:%M:%SZ)" && \
+             git pull --rebase --autostash && git push)
+
+      - name: Self-improve (post-commit)
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          CONFIG_PATH: ${{ github.event.inputs.config || 'config.yaml' }}
+        run: python -m agent.self_improve || true

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fire Intel Agent — Sign In</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <style>
+    /* ── Login page layout ── */
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg, #060b12);
+      font-family: var(--font, 'Inter', system-ui, sans-serif);
+      position: relative;
+    }
+
+    /* Ambient mesh background */
+    .login-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 0;
+    }
+    .login-bg__orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: .18;
+    }
+    .login-bg__orb--1 {
+      width: 520px; height: 520px;
+      background: radial-gradient(circle, #4aa3ff 0%, transparent 70%);
+      top: -140px; left: -120px;
+    }
+    .login-bg__orb--2 {
+      width: 420px; height: 420px;
+      background: radial-gradient(circle, #a78bfa 0%, transparent 70%);
+      bottom: -100px; right: -80px;
+    }
+    .login-bg__orb--3 {
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, #fb923c 0%, transparent 70%);
+      top: 50%; left: 60%;
+      transform: translate(-50%,-50%);
+      opacity: .10;
+    }
+
+    /* Card */
+    .login-card {
+      position: relative;
+      z-index: 1;
+      width: 380px;
+      padding: 44px 40px 40px;
+      background: rgba(14, 22, 34, 0.82);
+      backdrop-filter: blur(24px) saturate(1.4);
+      -webkit-backdrop-filter: blur(24px) saturate(1.4);
+      border: 1px solid rgba(74, 163, 255, 0.14);
+      border-radius: 16px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 32px 80px rgba(0,0,0,.6),
+        0 0 40px rgba(74,163,255,.06);
+    }
+    /* Top accent line */
+    .login-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(74,163,255,.35) 0%, rgba(167,139,250,.20) 50%, transparent 100%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* Logo lockup */
+    .login-logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .login-flame {
+      flex-shrink: 0;
+    }
+    .login-wordmark {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+    .login-name {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      background: linear-gradient(90deg, #4aa3ff 0%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .login-tag {
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .15em;
+      color: var(--muted, #6b7280);
+      text-transform: uppercase;
+    }
+    .login-sub {
+      color: var(--muted, #6b7280);
+      font-size: .82rem;
+      margin-bottom: 32px;
+      margin-top: 4px;
+    }
+
+    /* Form */
+    .login-field-wrap {
+      position: relative;
+      margin-bottom: 14px;
+    }
+    .login-field-icon {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted, #6b7280);
+      font-size: 14px;
+      pointer-events: none;
+    }
+    .login-field {
+      width: 100%;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 8px;
+      color: var(--text, #e5e7eb);
+      padding: 12px 14px 12px 38px;
+      font-size: .92rem;
+      font-family: inherit;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .login-field::placeholder {
+      color: rgba(107,114,128,.6);
+    }
+    .login-field:focus {
+      border-color: rgba(74,163,255,.5);
+      box-shadow: 0 0 0 3px rgba(74,163,255,.12);
+      background: rgba(74,163,255,.04);
+    }
+
+    /* Button */
+    .login-btn {
+      width: 100%;
+      padding: 13px 14px;
+      font-size: .94rem;
+      font-weight: 700;
+      font-family: inherit;
+      letter-spacing: .01em;
+      color: #fff;
+      background: linear-gradient(135deg, #4aa3ff 0%, #2563eb 100%);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 20px rgba(74,163,255,.3);
+    }
+    .login-btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.12) 0%, transparent 60%);
+      border-radius: inherit;
+    }
+    .login-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(74,163,255,.45);
+    }
+    .login-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Error */
+    .login-error {
+      color: #f87171;
+      font-size: .8rem;
+      margin-top: 10px;
+      min-height: 16px;
+      text-align: center;
+    }
+
+    /* Footer */
+    .login-footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: rgba(107,114,128,.55);
+      font-size: .72rem;
+      text-align: center;
+      margin-top: 28px;
+      letter-spacing: .02em;
+    }
+    .login-footer::before,
+    .login-footer::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,.06);
+    }
+
+    /* Shake animation on wrong password */
+    @keyframes login-shake {
+      0%, 100% { transform: translateX(0); }
+      20%       { transform: translateX(-8px); }
+      40%       { transform: translateX(8px); }
+      60%       { transform: translateX(-6px); }
+      80%       { transform: translateX(6px); }
+    }
+    .login-card.shake {
+      animation: login-shake .4s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient mesh -->
+  <div class="login-bg" aria-hidden="true">
+    <div class="login-bg__orb login-bg__orb--1"></div>
+    <div class="login-bg__orb login-bg__orb--2"></div>
+    <div class="login-bg__orb login-bg__orb--3"></div>
+  </div>
+
+  <!-- Card -->
+  <div class="login-card" id="login-card">
+
+    <div class="login-logo-wrap">
+      <!-- Inline SVG flame -->
+      <svg class="login-flame" width="28" height="34" viewBox="0 0 22 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="lf-grad" x1="11" y1="0" x2="11" y2="26" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#fb923c"/>
+            <stop offset="60%" stop-color="#ef4444"/>
+            <stop offset="100%" stop-color="#dc2626"/>
+          </linearGradient>
+          <linearGradient id="lf-inner" x1="11" y1="8" x2="11" y2="24" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#fbbf24"/>
+            <stop offset="100%" stop-color="#f97316"/>
+          </linearGradient>
+        </defs>
+        <path d="M11 1C11 1 15.5 6 15.5 10.5C15.5 11.8 15.1 13 14.4 13.9C14.8 12.8 14.8 11.5 14 10.5C14 10.5 13 13 11.5 14C11.8 12.5 11.2 11 10 10C10 10 10.5 13 9 14.5C7.5 16 6.5 18 7 20C5.5 18.5 4.5 16.5 4.5 14C4.5 9 8 5 11 1Z" fill="url(#lf-grad)"/>
+        <path d="M11 9C11 9 13.5 12 13.5 14.5C13.5 16.9 12.5 18.5 11 19.5C9.5 18.5 8.5 16.9 8.5 14.5C8.5 12 11 9 11 9Z" fill="url(#lf-inner)"/>
+        <ellipse cx="11" cy="22" rx="4" ry="3" fill="url(#lf-grad)" opacity="0.4"/>
+      </svg>
+      <div class="login-wordmark">
+        <span class="login-name">Fire Intel</span>
+        <span class="login-tag">Agent Platform</span>
+      </div>
+    </div>
+
+    <p class="login-sub">Competitive intelligence for fire &amp; life safety</p>
+
+    <div class="login-field-wrap">
+      <span class="login-field-icon" aria-hidden="true">🔑</span>
+      <input
+        type="password"
+        id="pw"
+        class="login-field"
+        placeholder="Access key"
+        autocomplete="current-password"
+        autofocus
+      >
+    </div>
+
+    <button class="login-btn" id="login-btn">Sign In</button>
+
+    <div class="login-error" id="login-error" role="alert" aria-live="polite"></div>
+
+    <div class="login-footer">Private access only</div>
+  </div>
+
+  <script src="login.js"></script>
+  <script>
+    // Shake card on wrong password (hook into existing login.js error flow)
+    const origErr = document.getElementById('login-error');
+    const card = document.getElementById('login-card');
+    const observer = new MutationObserver(() => {
+      if (origErr.textContent.trim()) {
+        card.classList.remove('shake');
+        void card.offsetWidth; // reflow to restart animation
+        card.classList.add('shake');
+      }
+    });
+    observer.observe(origErr, { childList: true, subtree: true, characterData: true });
+  </script>
+</body>
+</html>

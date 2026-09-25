@@ -1,0 +1,65 @@
+# Industrial Manufacturing & B2G — StealthRFQ Reference Config
+
+domain:
+  name: "Industrial Manufacturing & B2G"
+  short_name: "Mfg Intel"
+  description: "Market intelligence for industrial manufacturing and government procurement"
+  icon: "🏭"
+  personas:
+    - { key: shop_owner,       label: "Job Shop Owner" }
+    - { key: estimator,        label: "Estimator / Quoting Manager" }
+    - { key: procurement,      label: "Government Procurement Officer" }
+    - { key: program_manager,  label: "Program Manager" }
+    - { key: quality_manager,  label: "Quality / Compliance Manager" }
+    - { key: it_manager,       label: "IT / ERP Manager" }
+  categories:
+    - "Quoting & Estimation"
+    - "Government Procurement"
+    - "ERP & Data Integration"
+    - "Quality & Compliance (AS9100/ITAR)"
+    - "Supply Chain & Sourcing"
+    - "Workforce & Capacity"
+    - "Machinery & Capital Equipment"
+    - "Grants & Funding (SBIR/DoD)"
+
+storage:
+  db_path: data/scraper.db
+
+crawler:
+  user_agent: "pm-intel-engine/1.0 (industrial-manufacturing)"
+  timeout_seconds: 10
+
+web_search:
+  queries:
+    - '"job shop" (quoting software OR ERP OR estimating problem OR frustration)'
+    - '"contract manufacturer" (government OR DoD OR RFQ OR bid OR proposal)'
+    - '"ITAR" (compliance OR software OR problem OR challenge) manufacturer'
+    - '"AS9100" (certification OR audit OR software OR workflow)'
+    - 'site:sam.gov manufacturing OR "job shop" OR machining'
+    - '"SBIR" OR "Small Business Innovation" manufacturing (award OR application 2025)'
+    - '"ProShop" OR "Jobboss" OR "Shoptech" (review OR problem OR complaint OR integration)'
+    - 'site:reddit.com/r/manufacturing (software OR quoting OR ERP OR government)'
+    - '"defense contractor" (small business OR job shop) (problem OR challenge OR software)'
+  results_per_query: 50
+  recency_days: 365
+  engines: [google_news_rss, bing_news_rss, duckduckgo]
+
+sources:
+  industry_sites:
+    - { type: rss,  url: "https://www.manufacturingtomorrow.com/rss" }
+    - { type: rss,  url: "https://www.mmsonline.com/rss" }
+    - { type: page, url: "https://www.ptc.com/en/blogs" }
+    - { type: page, url: "https://www.nist.gov/mep/news" }
+
+reddit:
+  subreddits: [manufacturing, machinists, AskMachining, govcontracting, smallbusiness]
+  limit_per_sub: 500
+  lookback_days: 365
+
+fire_relevance_keywords:
+  - manufacturing, machining, fabrication, job shop, contract manufacturer
+  - rfq, bid, proposal, government, DoD, ITAR, AS9100, quoting, ERP
+
+self_improve:
+  enabled: true
+  require_approval: true

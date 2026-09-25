@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="auth.js"></script>
+  <meta charset="utf-8" />
+  <title>Settings — Intel Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./settings.css">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="brand">
+      <a href="./index.html" class="back-link" title="Back to dashboard">← Dashboard</a>
+      <span class="brand-icon">⚙️</span>
+      <strong>Source Settings</strong>
+      <small id="settings-status"></small>
+    </div>
+    <nav class="settings-tabs" role="tablist">
+      <button class="stab active" data-stab="suggestions">AI Suggestions <span id="suggestions-badge" class="pending-badge" hidden></span></button>
+      <button class="stab" data-stab="sources">Source Library</button>
+      <button class="stab" data-stab="add">Add Sources</button>
+      <button class="stab" data-stab="github">GitHub Config</button>
+    </nav>
+  </header>
+
+  <!-- ==================== GITHUB CONFIG PANEL ==================== -->
+  <div id="github-status-bar" class="gh-status-bar" hidden>
+    Connected to <strong id="gh-repo-label"></strong>
+    <span id="gh-branch-label" class="pill"></span>
+    <button class="btn btn-ghost btn-sm" id="gh-disconnect-btn">Change</button>
+  </div>
+
+  <!-- ==================== SUGGESTIONS TAB ==================== -->
+  <main id="stab-suggestions" class="settings-page active-stab" role="tabpanel">
+    <div class="section-head">
+      <h2>AI Suggestions Queue</h2>
+      <span class="small muted">Discovered by the self-improve agent — review and approve or reject each one</span>
+    </div>
+
+    <div id="suggestions-empty" class="empty-state" hidden>
+      <div class="empty-icon">✓</div>
+      <p>No pending suggestions. The self-improve agent will add new ones on the next pipeline run.</p>
+    </div>
+
+    <div id="suggestions-loading" class="loading">Loading suggestions…</div>
+
+    <div id="suggestions-filter" class="filter-bar" hidden>
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="source">Sources</button>
+      <button class="filter-btn" data-filter="query">Queries</button>
+      <button class="filter-btn" data-filter="competitor">Competitors</button>
+    </div>
+
+    <div id="suggestions-list" class="suggestions-list"></div>
+
+    <div id="suggestions-bulk-actions" class="bulk-actions" hidden>
+      <button class="btn btn-danger" id="reject-all-btn">Reject All</button>
+      <button class="btn btn-primary" id="approve-all-sources-btn">Approve All Sources</button>
+    </div>
+  </main>
+
+  <!-- ==================== SOURCE LIBRARY TAB ==================== -->
+  <main id="stab-sources" class="settings-page" role="tabpanel" hidden>
+    <div class="section-head">
+      <h2>Source Library</h2>
+      <div class="controls">
+        <input id="src-search" class="input input-lg" type="search" placeholder="Filter by URL, label, tag…" />
+        <select id="src-type-filter" class="input input-sm">
+          <option value="">All types</option>
+          <option value="rss">RSS</option>
+          <option value="page">Page</option>
+          <option value="reddit">Reddit</option>
+        </select>
+        <select id="src-persona-filter" class="input input-sm">
+          <option value="">All personas</option>
+          <option value="fire_chief">Fire Chief</option>
+          <option value="fire_marshal">Fire Marshal</option>
+          <option value="fire_inspector">Fire Inspector</option>
+          <option value="ahj">AHJ</option>
+          <option value="facility_manager">Facility Manager</option>
+          <option value="system_integrator">System Integrator</option>
+        </select>
+        <select id="src-region-filter" class="input input-sm">
+          <option value="">All regions</option>
+          <option value="us">US</option>
+          <option value="eu">EU</option>
+          <option value="apac">APAC</option>
+          <option value="global">Global</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="sources-loading" class="loading">Loading sources…</div>
+    <div id="sources-table-wrap" class="table-wrap" hidden>
+      <table class="table" id="sources-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>URL</th>
+            <th>Label</th>
+            <th>Personas</th>
+            <th>Topics</th>
+            <th>Region</th>
+            <th class="num" title="Reliability score 1–5">★</th>
+            <th class="num" title="Signals generated last 30 days">Yield</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sources-tbody"></tbody>
+      </table>
+    </div>
+    <p id="sources-table-count" class="small muted" style="margin:8px 0 0;"></p>
+
+    <div id="sources-save-bar" class="save-bar" hidden>
+      <span id="sources-dirty-count" class="small muted"></span>
+      <button class="btn btn-primary" id="sources-save-btn">Save Metadata Changes to GitHub</button>
+      <button class="btn btn-ghost" id="sources-discard-btn">Discard</button>
+    </div>
+  </main>
+
+  <!-- ==================== ADD SOURCES TAB ==================== -->
+  <main id="stab-add" class="settings-page" role="tabpanel" hidden>
+    <div class="section-head">
+      <h2>Add Sources</h2>
+    </div>
+
+    <div class="add-grid">
+      <!-- Single source form -->
+      <div class="card">
+        <div class="card-head"><h3>Single Source</h3></div>
+        <div class="card-body">
+          <div class="form-row">
+            <label>URL <span class="req">*</span></label>
+            <input id="add-url" class="input" type="url" placeholder="https://example.com/feed" />
+          </div>
+          <div class="form-row">
+            <label>Type</label>
+            <select id="add-type" class="input input-sm">
+              <option value="page">Page</option>
+              <option value="rss">RSS Feed</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Label / Description</label>
+            <input id="add-label" class="input" type="text" placeholder="Short description (optional)" maxlength="120" />
+          </div>
+          <div class="form-row">
+            <label>Personas</label>
+            <div class="tag-picker" id="add-personas">
+              <label class="tag-option"><input type="checkbox" value="fire_chief"> Fire Chief</label>
+              <label class="tag-option"><input type="checkbox" value="fire_marshal"> Fire Marshal</label>
+              <label class="tag-option"><input type="checkbox" value="fire_inspector"> Fire Inspector</label>
+              <label class="tag-option"><input type="checkbox" value="ahj"> AHJ</label>
+              <label class="tag-option"><input type="checkbox" value="facility_manager"> Facility Manager</label>
+              <label class="tag-option"><input type="checkbox" value="system_integrator"> System Integrator</label>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Topics</label>
+            <div class="tag-picker" id="add-topics">
+              <label class="tag-option"><input type="checkbox" value="inspection-software"> Inspection Software</label>
+              <label class="tag-option"><input type="checkbox" value="nfpa-standards"> NFPA Standards</label>
+              <label class="tag-option"><input type="checkbox" value="wildland"> Wildland/WUI</label>
+              <label class="tag-option"><input type="checkbox" value="procurement"> Procurement</label>
+              <label class="tag-option"><input type="checkbox" value="crr"> Community Risk</label>
+              <label class="tag-option"><input type="checkbox" value="integration"> Integration/API</label>
+              <label class="tag-option"><input type="checkbox" value="competitive"> Competitive Intel</label>
+              <label class="tag-option"><input type="checkbox" value="eu-standards"> EU Standards</label>
+              <label class="tag-option"><input type="checkbox" value="apac"> APAC</label>
+            </div>
+          </div>
+          <div class="form-row form-row-inline">
+            <div>
+              <label>Region</label>
+              <select id="add-region" class="input input-sm">
+                <option value="">Global</option>
+                <option value="us">US</option>
+                <option value="eu">EU</option>
+                <option value="apac">APAC</option>
+                <option value="uk">UK</option>
+              </select>
+            </div>
+            <div>
+              <label>Reliability (1–5)</label>
+              <select id="add-reliability" class="input input-sm">
+                <option value="0">Unrated</option>
+                <option value="3" selected>3 — Average</option>
+                <option value="4">4 — Good</option>
+                <option value="5">5 — Excellent</option>
+                <option value="2">2 — Low</option>
+                <option value="1">1 — Poor</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="add-single-btn">Add Source</button>
+            <span id="add-single-status" class="status-msg"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk import -->
+      <div class="card">
+        <div class="card-head">
+          <h3>Bulk Import</h3>
+          <span class="small muted">One URL per line — type and metadata applied to all</span>
+        </div>
+        <div class="card-body">
+          <textarea id="bulk-urls" class="input bulk-textarea" placeholder="https://example.com/blog/&#10;https://feeds.feedburner.com/example&#10;https://another-site.org/news"></textarea>
+          <div class="form-row form-row-inline" style="margin-top:12px;">
+            <div>
+              <label>Default Type</label>
+              <select id="bulk-type" class="input input-sm">
+                <option value="page">Page</option>
+                <option value="rss">RSS Feed</option>
+              </select>
+            </div>
+            <div>
+              <label>Default Region</label>
+              <select id="bulk-region" class="input input-sm">
+                <option value="">Global</option>
+                <option value="us">US</option>
+                <option value="eu">EU</option>
+                <option value="apac">APAC</option>
+                <option value="uk">UK</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="bulk-add-btn">Import URLs</button>
+            <span id="bulk-status" class="status-msg"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== GITHUB CONFIG TAB ==================== -->
+  <main id="stab-github" class="settings-page" role="tabpanel" hidden>
+    <div class="section-head">
+      <h2>GitHub Configuration</h2>
+      <span class="small muted">Required to save changes back to your repository. Stored only in your browser's localStorage.</span>
+    </div>
+
+    <div class="card" style="max-width:540px;">
+      <div class="card-body">
+        <div class="form-row">
+          <label>GitHub Owner / Org <span class="req">*</span></label>
+          <input id="gh-owner" class="input" type="text" placeholder="your-org-or-username" autocomplete="off" />
+        </div>
+        <div class="form-row">
+          <label>Repository <span class="req">*</span></label>
+          <input id="gh-repo" class="input" type="text" placeholder="fire-intel-agent" autocomplete="off" />
+        </div>
+        <div class="form-row">
+          <label>Branch</label>
+          <input id="gh-branch" class="input" type="text" placeholder="main" value="main" autocomplete="off" />
+        </div>
+        <div class="form-row">
+          <label>Personal Access Token (PAT) <span class="req">*</span></label>
+          <input id="gh-pat" class="input" type="password" placeholder="ghp_…" autocomplete="off" />
+          <span class="small muted">Needs <code>repo</code> scope. Never sent anywhere except api.github.com.</span>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="gh-save-btn">Save & Test Connection</button>
+          <span id="gh-status" class="status-msg"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== INLINE EDIT MODAL ==================== -->
+  <div id="edit-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modal-title">Edit Source Metadata</h3>
+        <button class="modal-close" id="modal-close-btn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="modal-url" class="small mono muted"></p>
+        <div class="form-row">
+          <label>Label</label>
+          <input id="modal-label" class="input" type="text" maxlength="120" />
+        </div>
+        <div class="form-row">
+          <label>Personas</label>
+          <div class="tag-picker" id="modal-personas">
+            <label class="tag-option"><input type="checkbox" value="fire_chief"> Fire Chief</label>
+            <label class="tag-option"><input type="checkbox" value="fire_marshal"> Fire Marshal</label>
+            <label class="tag-option"><input type="checkbox" value="fire_inspector"> Fire Inspector</label>
+            <label class="tag-option"><input type="checkbox" value="ahj"> AHJ</label>
+            <label class="tag-option"><input type="checkbox" value="facility_manager"> Facility Manager</label>
+            <label class="tag-option"><input type="checkbox" value="system_integrator"> System Integrator</label>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Topics</label>
+          <div class="tag-picker" id="modal-topics">
+            <label class="tag-option"><input type="checkbox" value="inspection-software"> Inspection Software</label>
+            <label class="tag-option"><input type="checkbox" value="nfpa-standards"> NFPA Standards</label>
+            <label class="tag-option"><input type="checkbox" value="wildland"> Wildland/WUI</label>
+            <label class="tag-option"><input type="checkbox" value="procurement"> Procurement</label>
+            <label class="tag-option"><input type="checkbox" value="crr"> Community Risk</label>
+            <label class="tag-option"><input type="checkbox" value="integration"> Integration/API</label>
+            <label class="tag-option"><input type="checkbox" value="competitive"> Competitive Intel</label>
+            <label class="tag-option"><input type="checkbox" value="eu-standards"> EU Standards</label>
+            <label class="tag-option"><input type="checkbox" value="apac"> APAC</label>
+          </div>
+        </div>
+        <div class="form-row form-row-inline">
+          <div>
+            <label>Region</label>
+            <select id="modal-region" class="input input-sm">
+              <option value="">Global</option>
+              <option value="us">US</option>
+              <option value="eu">EU</option>
+              <option value="apac">APAC</option>
+              <option value="uk">UK</option>
+            </select>
+          </div>
+          <div>
+            <label>Reliability</label>
+            <select id="modal-reliability" class="input input-sm">
+              <option value="0">Unrated</option>
+              <option value="1">1 — Poor</option>
+              <option value="2">2 — Low</option>
+              <option value="3">3 — Average</option>
+              <option value="4">4 — Good</option>
+              <option value="5">5 — Excellent</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="modal-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="modal-save-btn">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./settings.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="auth.js"></script>
+  <meta charset="utf-8" />
+  <title>Intel Domain Creator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./creator.css">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+  <header class="creator-header">
+    <div class="brand">🧠 Intel Domain Creator</div>
+    <a href="./index.html" class="back-link">← Back to Dashboard</a>
+  </header>
+
+  <!-- Progress Bar -->
+  <nav class="progress-bar" role="tablist">
+    <div class="progress-step active" data-step="1" role="tab">
+      <span class="step-num">1</span> Domain
+    </div>
+    <div class="progress-step" data-step="2" role="tab">
+      <span class="step-num">2</span> Personas
+    </div>
+    <div class="progress-step" data-step="3" role="tab">
+      <span class="step-num">3</span> Categories
+    </div>
+    <div class="progress-step" data-step="4" role="tab">
+      <span class="step-num">4</span> Competitors
+    </div>
+    <div class="progress-step" data-step="5" role="tab">
+      <span class="step-num">5</span> Sources
+    </div>
+    <div class="progress-step" data-step="6" role="tab">
+      <span class="step-num">6</span> Deploy
+    </div>
+  </nav>
+
+  <div class="creator-body">
+
+    <!-- ===== STEP 1: DOMAIN ===== -->
+    <section class="wizard-step active" data-step="1">
+      <h2 class="step-title">Domain Identity</h2>
+      <p class="step-desc">Define the core identity of your intelligence domain. This drives the dashboard title, branding, and context for all AI analysis.</p>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="domain-name" class="required">Domain Name</label>
+          <input type="text" id="domain-name" placeholder="e.g. Fire &amp; Life Safety" />
+          <span class="field-hint">Displayed as the dashboard title</span>
+        </div>
+        <div class="field">
+          <label for="domain-slug" class="required">Short Slug</label>
+          <input type="text" id="domain-slug" placeholder="e.g. fire-safety" />
+          <span class="field-hint">Lowercase letters and hyphens only — used for file paths</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="domain-short-name">Short Name</label>
+        <input type="text" id="domain-short-name" placeholder="e.g. Fire Intel" />
+        <span class="field-hint">Used in compact UI contexts</span>
+      </div>
+
+      <div class="field">
+        <label for="domain-description">Description</label>
+        <textarea id="domain-description" rows="3" placeholder="What market or industry are you monitoring? What's the purpose of this intelligence domain?"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Icon</label>
+        <div class="emoji-grid" id="emoji-grid">
+          <button type="button" class="emoji-btn selected" data-emoji="🔥">🔥</button>
+          <button type="button" class="emoji-btn" data-emoji="🏥">🏥</button>
+          <button type="button" class="emoji-btn" data-emoji="🏗️">🏗️</button>
+          <button type="button" class="emoji-btn" data-emoji="⚡">⚡</button>
+          <button type="button" class="emoji-btn" data-emoji="🔒">🔒</button>
+          <button type="button" class="emoji-btn" data-emoji="🌐">🌐</button>
+          <button type="button" class="emoji-btn" data-emoji="📊">📊</button>
+          <button type="button" class="emoji-btn" data-emoji="🛡️">🛡️</button>
+          <button type="button" class="emoji-btn" data-emoji="🚗">🚗</button>
+          <button type="button" class="emoji-btn" data-emoji="🏛️">🏛️</button>
+          <button type="button" class="emoji-btn" data-emoji="💊">💊</button>
+          <button type="button" class="emoji-btn" data-emoji="🌱">🌱</button>
+          <button type="button" class="emoji-btn" data-emoji="🤖">🤖</button>
+          <button type="button" class="emoji-btn" data-emoji="📡">📡</button>
+          <button type="button" class="emoji-btn" data-emoji="🏢">🏢</button>
+          <button type="button" class="emoji-btn" data-emoji="⚙️">⚙️</button>
+        </div>
+        <input type="hidden" id="domain-icon" value="🔥" />
+      </div>
+
+      <div class="step-nav">
+        <span></span>
+        <button class="btn btn-primary" id="step1-next">Next: Personas →</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 2: PERSONAS ===== -->
+    <section class="wizard-step" data-step="2">
+      <h2 class="step-title">Personas</h2>
+      <p class="step-desc">Define the buyer personas or job roles you're tracking. These appear as filter options and battlecard columns. Pre-seeded with fire safety defaults — edit to match your domain.</p>
+
+      <table class="dynamic-table" id="personas-table">
+        <thead>
+          <tr>
+            <th>Key <span class="small">(slug)</span></th>
+            <th>Label <span class="small">(display name)</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="personas-body">
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+      <button class="add-row-btn" id="add-persona">+ Add Persona</button>
+
+      <div class="step-nav">
+        <button class="btn btn-ghost" data-prev="1">← Back</button>
+        <button class="btn btn-primary" data-next="3">Next: Categories →</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 3: CATEGORIES ===== -->
+    <section class="wizard-step" data-step="3">
+      <h2 class="step-title">VOC Categories</h2>
+      <p class="step-desc">Define the Voice-of-Customer divisions — the high-level buckets that signals get classified into. These drive the bar chart and filter options. One category per line.</p>
+
+      <div class="field">
+        <label for="categories-text">Categories <span class="required"></span></label>
+        <textarea id="categories-text" rows="10" placeholder="Inspections &amp; Compliance&#10;Data &amp; System Integration&#10;Communication &amp; Coordination&#10;Operations &amp; Training&#10;Standards &amp; Codes&#10;Procurement / Grants / Funding"></textarea>
+        <span class="field-hint">One category per line. These are the VOC buckets shown in the bar chart.</span>
+      </div>
+
+      <div class="step-nav">
+        <button class="btn btn-ghost" data-prev="2">← Back</button>
+        <button class="btn btn-primary" data-next="4">Next: Competitors →</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 4: COMPETITORS ===== -->
+    <section class="wizard-step" data-step="4">
+      <h2 class="step-title">Competitors</h2>
+      <p class="step-desc">Add the vendors or solutions you want to track on the battlecard. Start with just a name and URL — fill in details later, or skip entirely and add them after deployment.</p>
+
+      <div id="competitors-list">
+        <!-- competitor cards injected by JS -->
+      </div>
+      <button class="add-row-btn" id="add-competitor">+ Add Competitor</button>
+
+      <div class="step-nav">
+        <button class="btn btn-ghost" data-prev="3">← Back</button>
+        <button class="btn btn-primary" data-next="5">Next: Sources →</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 5: SOURCES ===== -->
+    <section class="wizard-step" data-step="5">
+      <h2 class="step-title">Sources</h2>
+      <p class="step-desc">Configure the data sources for your intelligence pipeline. You can always add more later via <code>data/extra_sources.yaml</code>.</p>
+
+      <div class="source-section">
+        <h4>RSS Feeds</h4>
+        <div class="field">
+          <textarea id="sources-rss" rows="5" placeholder="https://www.firehouse.com/rss&#10;https://www.firerescue1.com/rss.atom&#10;https://www.nfpa.org/rss/feeds/news"></textarea>
+          <span class="field-hint">One RSS/Atom feed URL per line.</span>
+        </div>
+      </div>
+
+      <div class="source-section">
+        <h4>Web Pages <span class="small">(crawled regularly)</span></h4>
+        <div class="field">
+          <textarea id="sources-pages" rows="4" placeholder="https://www.nfpa.org/codes-and-standards&#10;https://www.usfa.fema.gov/operations/ops_nfirs.html"></textarea>
+          <span class="field-hint">One URL per line. These pages are fetched and scanned on each pipeline run.</span>
+        </div>
+      </div>
+
+      <div class="source-section">
+        <h4>Reddit Subreddits</h4>
+        <div class="field">
+          <input type="text" id="sources-reddit" placeholder="firefighting, fireservice, ems" />
+          <span class="field-hint">Comma-separated subreddit names (without r/ prefix).</span>
+        </div>
+      </div>
+
+      <div class="source-section">
+        <h4>Search Keywords <span class="small">(free web search — no API key needed)</span></h4>
+        <div class="field">
+          <textarea id="sources-queries" rows="6" placeholder='"fire inspection" software 2025&#10;"fire safety" RMS integration&#10;"NFPA 72" update revision'></textarea>
+          <span class="field-hint">One search query per line. Searched daily across Google News, Bing News, and DuckDuckGo.</span>
+        </div>
+      </div>
+
+      <div class="step-nav">
+        <button class="btn btn-ghost" data-prev="4">← Back</button>
+        <button class="btn btn-primary" data-next="6">Next: Deploy →</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 6: DEPLOY ===== -->
+    <section class="wizard-step" data-step="6">
+      <h2 class="step-title">GitHub Deploy</h2>
+      <p class="step-desc">Generate config files and commit them directly to your GitHub repository. The pipeline will be triggered automatically.</p>
+
+      <div class="error-banner" id="deploy-error"></div>
+      <div class="success-banner" id="deploy-success"></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="gh-owner" class="required">GitHub Owner</label>
+          <input type="text" id="gh-owner" placeholder="your-username-or-org" />
+        </div>
+        <div class="field">
+          <label for="gh-repo" class="required">Repository Name</label>
+          <input type="text" id="gh-repo" placeholder="fire-intel-agent" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="gh-branch">Branch</label>
+        <input type="text" id="gh-branch" value="main" />
+      </div>
+
+      <div class="field">
+        <label for="gh-pat" class="required">GitHub Personal Access Token</label>
+        <div class="pat-field">
+          <input type="password" id="gh-pat" placeholder="ghp_…" autocomplete="off" />
+          <button type="button" class="pat-toggle" id="pat-toggle">Show</button>
+        </div>
+        <div class="token-warning">
+          ⚠️ Your PAT is stored <strong>only in your browser's localStorage</strong> — it is never sent to any server other than GitHub's API directly from your browser.
+          The token needs <strong>repo</strong> scope (to commit files) and <strong>actions: write</strong> scope (to trigger the workflow).
+        </div>
+      </div>
+
+      <!-- Preview -->
+      <div class="field">
+        <label>Generated config.yaml preview</label>
+        <div class="preview-panel">
+          <pre id="yaml-preview">Click "Preview" to generate…</pre>
+        </div>
+        <button type="button" class="preview-toggle" id="preview-btn">↻ Refresh Preview</button>
+      </div>
+
+      <!-- Deploy status -->
+      <div class="deploy-status" id="deploy-status" style="display:none;">
+        <div class="status-line">
+          <span class="status-icon pending" id="s-config">⚙️</span>
+          <span>Writing <code>config.yaml</code> to GitHub</span>
+        </div>
+        <div class="status-line">
+          <span class="status-icon pending" id="s-competitors">📋</span>
+          <span>Writing <code>data/competitors.yaml</code> to GitHub</span>
+        </div>
+        <div class="status-line">
+          <span class="status-icon pending" id="s-dispatch">🚀</span>
+          <span>Triggering pipeline workflow</span>
+        </div>
+      </div>
+
+      <div class="step-nav">
+        <button class="btn btn-ghost" data-prev="5">← Back</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-ghost" id="preview-btn-nav">Preview YAML</button>
+          <button class="btn btn-success" id="deploy-btn">🚀 Generate &amp; Deploy</button>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /creator-body -->
+
+  <script type="module" src="./creator.js"></script>
+</body>
+</html>
