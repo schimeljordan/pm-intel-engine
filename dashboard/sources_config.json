@@ -1,1 +1,52 @@
-[]
+{
+  "generated_at": "2026-09-25T18:15:41Z",
+  "sources": [
+    {
+      "type": "rss",
+      "url": "https://your-industry-publication.com/feed/",
+      "section": "Industry Sites",
+      "label": ""
+    },
+    {
+      "type": "page",
+      "url": "https://your-community-forum.com/",
+      "section": "Industry Sites",
+      "label": ""
+    },
+    {
+      "type": "rss",
+      "url": "https://your-trade-magazine.com/rss",
+      "section": "Magazines & RSS",
+      "label": ""
+    },
+    {
+      "type": "reddit",
+      "url": "https://reddit.com/r/yourIndustry",
+      "section": "Reddit",
+      "label": "r/yourIndustry"
+    },
+    {
+      "type": "reddit",
+      "url": "https://reddit.com/r/relatedTopic",
+      "section": "Reddit",
+      "label": "r/relatedTopic"
+    },
+    {
+      "type": "web_search",
+      "url": "",
+      "section": "Web Search",
+      "label": "8 search queries",
+      "queries": [
+        "your industry software news 2025",
+        "your industry technology trends",
+        "\"Competitor A\" (update OR release OR pricing OR review)",
+        "\"Competitor B\" (integration OR API OR update OR complaint)",
+        "\"your industry\" (problem OR challenge OR frustrated OR broken) software",
+        "\"your persona\" (workflow OR process OR tool OR workaround)",
+        "site:reddit.com \"your industry\" (software OR tool OR problem)",
+        "site:g2.com \"your category\" review"
+      ]
+    }
+  ],
+  "pending_suggestions_count": 0
+}

@@ -1,15 +1,34 @@
 {
-  "name": "PM Intel Engine",
-  "short_name": "PM Intel",
-  "description": "Market intelligence for your industry — configure domain.yaml to customize",
+  "generated_at": "2026-09-25T18:15:41Z",
+  "name": "Your Industry",
+  "short_name": "Intel",
+  "description": "Competitive intelligence and voice-of-customer analysis for your industry",
   "icon": "🔍",
   "personas": [
-    {"key": "executive", "label": "Executive / Decision Maker"},
-    {"key": "product_manager", "label": "Product Manager"},
-    {"key": "ops_manager", "label": "Operations Manager"},
-    {"key": "it_manager", "label": "IT / Data Manager"},
-    {"key": "end_user", "label": "End User / Practitioner"},
-    {"key": "procurement", "label": "Procurement / Finance"}
+    {
+      "key": "executive",
+      "label": "Executive / Decision Maker"
+    },
+    {
+      "key": "product_manager",
+      "label": "Product Manager"
+    },
+    {
+      "key": "ops_manager",
+      "label": "Operations Manager"
+    },
+    {
+      "key": "it_manager",
+      "label": "IT / Data Manager"
+    },
+    {
+      "key": "end_user",
+      "label": "End User / Practitioner"
+    },
+    {
+      "key": "procurement",
+      "label": "Procurement / Finance"
+    }
   ],
   "categories": [
     "Product & Feature Gaps",
